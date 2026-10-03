@@ -1,0 +1,28 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Build
+bin/
+obj/
+
+# Rider
+.idea/
+
+# Test results
+TestResults/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# User-specific ASP.NET files
+appsettings.Development.json
+
+# Secrets
+.env
+.env.*
+
+# Publish output
+publish/

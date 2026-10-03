@@ -1,0 +1,6 @@
+@RAQEEB_HostAddress = http://localhost:5150
+
+GET {{RAQEEB_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
