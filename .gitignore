@@ -26,3 +26,5 @@ appsettings.Development.json
 
 # Publish output
 publish/
+
+appsettings.Production.json
