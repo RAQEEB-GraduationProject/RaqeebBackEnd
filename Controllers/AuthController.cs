@@ -2,6 +2,10 @@
 using Microsoft.AspNetCore.Mvc;
 using RAQEEB.DTOs.Auth;
 using RAQEEB.Entities;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace RAQEEB.Controllers
 {
@@ -12,10 +16,14 @@ namespace RAQEEB.Controllers
     public class AuthController : ControllerBase
     {
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(UserManager<ApplicationUser> userManager)
+        public AuthController(
+            UserManager<ApplicationUser> userManager,
+            IConfiguration configuration)
         {
             _userManager = userManager;
+            _configuration = configuration;
         }
 
         [HttpPost("register")]
@@ -38,18 +46,51 @@ namespace RAQEEB.Controllers
             }
         }
 
+ 
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
             var user = await _userManager.FindByNameAsync(loginDto.UserName);
-            if (user != null && await _userManager.CheckPasswordAsync(user, loginDto.Password))
+
+            if (user == null || !await _userManager.CheckPasswordAsync(user, loginDto.Password))
             {
-                return Ok(new { message = "User logged in successfully" });
+                return Unauthorized(new
+                {
+                    message = "Invalid username or password"
+                });
             }
-            else
+
+            var claims = new List<Claim>
+    {
+        new Claim(ClaimTypes.NameIdentifier, user.Id),
+        new Claim(ClaimTypes.Name, user.UserName!)
+    };
+
+            var key = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)
+            );
+
+            var credentials = new SigningCredentials(
+                key,
+                SecurityAlgorithms.HmacSha256
+            );
+
+            var token = new JwtSecurityToken(
+                issuer: _configuration["Jwt:Issuer"],
+                audience: _configuration["Jwt:Audience"],
+                claims: claims,
+                expires: DateTime.UtcNow.AddHours(2),
+                signingCredentials: credentials
+            );
+
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+            return Ok(new
             {
-                return Unauthorized(new { message = "Invalid username or password" });
-            }
+                message = "User logged in successfully",
+                token = tokenString,
+                expiration = token.ValidTo
+            });
         }
         //test
     }
