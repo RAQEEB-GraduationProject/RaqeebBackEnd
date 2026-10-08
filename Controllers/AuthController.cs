@@ -1,58 +1,34 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RAQEEB.Common;
 using RAQEEB.DTOs.Auth;
-using RAQEEB.Entities;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
+using RAQEEB.Services.Auth;
 
 namespace RAQEEB.Controllers
 {
-
     [ApiController]
     [Route("api/[controller]")]
-
     public class AuthController : ControllerBase
     {
-        private readonly UserManager<ApplicationUser> _userManager;
-        private readonly IConfiguration _configuration;
+        private readonly IAuthService _authService;
+        private readonly ICurrentUser _currentUser;
 
         public AuthController(
-            UserManager<ApplicationUser> userManager,
-            IConfiguration configuration)
+            IAuthService authService,
+            ICurrentUser currentUser)
         {
-            _userManager = userManager;
-            _configuration = configuration;
+            _authService = authService;
+            _currentUser = currentUser;
         }
 
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterDto registerDto)
-        {
-            var user = new ApplicationUser
-            {
-                UserName = registerDto.UserName,
-                Email = registerDto.Email,
-                PhoneNumber = registerDto.PhoneNumber
-            };
-            var result = await _userManager.CreateAsync(user, registerDto.Password);
-            if (result.Succeeded)
-            {
-                return Ok(new { message = "User registered successfully" });
-            }
-            else
-            {
-                return BadRequest(result.Errors);
-            }
-        }
-
- 
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
+        public async Task<IActionResult> Login(
+            [FromBody] LoginDto loginDto)
         {
-            var user = await _userManager.FindByNameAsync(loginDto.UserName);
+            var result =
+                await _authService.LoginAsync(loginDto);
 
-            if (user == null || !await _userManager.CheckPasswordAsync(user, loginDto.Password))
+            if (result == null)
             {
                 return Unauthorized(new
                 {
@@ -60,38 +36,43 @@ namespace RAQEEB.Controllers
                 });
             }
 
-            var claims = new List<Claim>
-    {
-        new Claim(ClaimTypes.NameIdentifier, user.Id),
-        new Claim(ClaimTypes.Name, user.UserName!)
-    };
+            return Ok(result);
+        }
 
-            var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)
-            );
+        [Authorize(Roles = "Admin")]
+        [HttpPost("register")]
+        public async Task<IActionResult> Register(
+            [FromBody] RegisterDto registerDto)
+        {
+            if (!_currentUser.IsAuthenticated)
+            {
+                return Unauthorized();
+            }
 
-            var credentials = new SigningCredentials(
-                key,
-                SecurityAlgorithms.HmacSha256
-            );
+            if (!_currentUser.HospitalId.HasValue)
+            {
+                return BadRequest(new
+                {
+                    message = "Current user is not assigned to a hospital."
+                });
+            }
 
-            var token = new JwtSecurityToken(
-                issuer: _configuration["Jwt:Issuer"],
-                audience: _configuration["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddHours(2),
-                signingCredentials: credentials
-            );
+            var success = await _authService.RegisterAsync(
+                registerDto,
+                _currentUser.HospitalId.Value);
 
-            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+            if (!success)
+            {
+                return BadRequest(new
+                {
+                    message = "User registration failed."
+                });
+            }
 
             return Ok(new
             {
-                message = "User logged in successfully",
-                token = tokenString,
-                expiration = token.ValidTo
+                message = "User registered successfully."
             });
         }
-        //test
     }
 }

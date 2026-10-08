@@ -1,10 +1,12 @@
-using Microsoft.EntityFrameworkCore;
-using RAQEEB.Data;
-using Microsoft.AspNetCore.Identity;
-using RAQEEB.Entities;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using RAQEEB.Data;
+using RAQEEB.Entities;
+using RAQEEB.Services.Auth;
+using RAQEEB.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +20,12 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
+
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -75,8 +83,26 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 
-
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+
+    var context = services
+        .GetRequiredService<ApplicationDbContext>();
+
+    var userManager = services
+        .GetRequiredService<UserManager<ApplicationUser>>();
+
+    var roleManager = services
+        .GetRequiredService<RoleManager<IdentityRole>>();
+
+    await DbSeeder.SeedAsync(
+        context,
+        userManager,
+        roleManager);
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
