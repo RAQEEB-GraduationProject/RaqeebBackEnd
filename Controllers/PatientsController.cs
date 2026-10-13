@@ -72,9 +72,12 @@ namespace RAQEEB.Controllers
             {
                 var recordExists = await _context.Patients
                     .AnyAsync(p =>
-                        p.HospitalId == hospitalId.Value &&
-                        p.MedicalRecordNumber == dto.MedicalRecordNumber);
-
+                        p.HospitalId == hospitalId.Value && //The existing patient belongs to the same hospital.
+                        p.MedicalRecordNumber == dto.MedicalRecordNumber);//The existing patient's medical record number
+                                                                          //matches the submitted number
+                                        
+                
+                //medical record numbers are being treated as unique within each hospital
                 if (recordExists)
                 {
                     return Conflict(new
@@ -83,6 +86,7 @@ namespace RAQEEB.Controllers
                     });
                 }
             }
+
 
             var patient = new Patient
             {
@@ -102,7 +106,7 @@ namespace RAQEEB.Controllers
 
             await _context.SaveChangesAsync();
 
-            var result = new PatientResponseDto
+            var result = new PatientResponseDto //for frontend to display the newly created patient profile
             {
                 Id = patient.Id,
                 UserId = user.Id,
@@ -134,7 +138,7 @@ namespace RAQEEB.Controllers
                 return Forbid();
 
             var query = _context.Patients
-                .AsNoTracking()
+                .AsNoTracking() //for read-only queries, improves performance by not tracking changes to the entities
                 .Where(p =>
                     p.HospitalId == hospitalId.Value &&
                     p.IsActive);
@@ -145,7 +149,7 @@ namespace RAQEEB.Controllers
                 {
                     query = query.Where(p => p.UserId == userId);
                 }
-                else
+                else //doctor, nurse, caregiver roles can view patients assigned to them
                 {
                     query = query.Where(p =>
                         _context.PatientAssignments.Any(a =>
@@ -156,7 +160,7 @@ namespace RAQEEB.Controllers
             }
 
             var patients = await query
-                .Select(p => new PatientResponseDto
+                .Select(p => new PatientResponseDto //projection concept
                 {
                     Id = p.Id,
                     UserId = p.UserId,
@@ -229,5 +233,136 @@ namespace RAQEEB.Controllers
 
             return Ok(patient);
         }
+
+        [HttpPut("{id:guid}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdatePatient(
+    Guid id,
+    [FromBody] UpdatePatientDto dto)
+        {
+            var hospitalId = _currentUser.HospitalId;
+
+            if (hospitalId == null)
+                return Forbid();
+
+            var patient = await _context.Patients.FirstOrDefaultAsync(p =>
+                p.Id == id &&
+                p.HospitalId == hospitalId.Value &&
+                p.IsActive);
+
+            if (patient == null)
+                return NotFound();
+
+            if (!string.IsNullOrWhiteSpace(dto.MedicalRecordNumber))
+            {
+                var recordNumber = dto.MedicalRecordNumber.Trim();
+
+                var recordExists = await _context.Patients.AnyAsync(p =>
+                    p.HospitalId == hospitalId.Value &&
+                    p.Id != id &&
+                    p.MedicalRecordNumber == recordNumber);
+
+                if (recordExists)
+                {
+
+                    return Conflict(new
+                    {
+                        message = "This medical record number is already in use."
+                    });
+                }
+
+                patient.MedicalRecordNumber = recordNumber;
+            }
+            else
+            {
+                patient.MedicalRecordNumber = null;
+            }
+
+            patient.DateOfBirth = dto.DateOfBirth;
+            patient.Gender = dto.Gender;
+
+            await _context.SaveChangesAsync();
+
+            var result = await _context.Patients
+                .AsNoTracking()
+                .Where(p => p.Id == id)
+                .Select(p => new PatientResponseDto
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    UserName = p.User.UserName ?? string.Empty,
+                    Email = p.User.Email ?? string.Empty,
+                    HospitalId = p.HospitalId,
+                    DateOfBirth = p.DateOfBirth,
+                    Gender = p.Gender,
+                    MedicalRecordNumber = p.MedicalRecordNumber,
+                    IsActive = p.IsActive,
+                    CreatedAt = p.CreatedAt
+                })
+                .FirstAsync();
+
+            return Ok(result);
+        }
+
+
+        //delete a patient profile (soft delete)
+        [HttpDelete("{id:guid}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeletePatient(Guid id)
+        {
+            var hospitalId = _currentUser.HospitalId;
+
+            if (hospitalId == null)
+                return Forbid();
+
+            var patient = await _context.Patients.FirstOrDefaultAsync(p =>
+                p.Id == id &&
+                p.HospitalId == hospitalId.Value &&
+                p.IsActive);
+
+            if (patient == null)
+                return NotFound();
+
+            patient.IsActive = false;
+
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+
+        //ReActivate a patient profile
+        [HttpPatch("{id:guid}/reactivate")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ReactivatePatient(Guid id)
+        {
+            var hospitalId = _currentUser.HospitalId;
+
+            if (hospitalId == null)
+                return Forbid();
+
+            var patient = await _context.Patients.FirstOrDefaultAsync(p =>
+                p.Id == id &&
+                p.HospitalId == hospitalId.Value);
+
+            if (patient == null)
+                return NotFound();
+
+            if (patient.IsActive)
+            {
+                return BadRequest(new
+                {
+                    message = "This patient is already active."
+                });
+            }
+
+            patient.IsActive = true;
+
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+
     }
 }
