@@ -5,6 +5,8 @@ using RAQEEB.Entities;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using RAQEEB.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace RAQEEB.Services.Auth
 {
@@ -12,13 +14,16 @@ namespace RAQEEB.Services.Auth
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configuration;
+        private readonly ApplicationDbContext _context;
 
         public AuthService(
             UserManager<ApplicationUser> userManager,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            ApplicationDbContext context)
         {
             _userManager = userManager;
             _configuration = configuration;
+            _context = context;
         }
 
         public async Task<LoginResponseDto?> LoginAsync(
@@ -114,9 +119,10 @@ namespace RAQEEB.Services.Auth
         }
 
         public async Task<bool> RegisterAsync(
-            RegisterDto registerDto,
-            Guid hospitalId)
+    RegisterDto registerDto,
+    Guid hospitalId)
         {
+            // 1. Check whether the username already exists.
             var existingUser = await _userManager
                 .FindByNameAsync(registerDto.UserName);
 
@@ -125,6 +131,7 @@ namespace RAQEEB.Services.Auth
                 return false;
             }
 
+            // 2. Check whether the email already exists.
             var existingEmail = await _userManager
                 .FindByEmailAsync(registerDto.Email);
 
@@ -133,19 +140,47 @@ namespace RAQEEB.Services.Auth
                 return false;
             }
 
+            // 3. Validate the selected role.
             var allowedRoles = new[]
             {
-                "Doctor",
-                "Nurse",
-                "Caregiver",
-                "Patient"
-            };
+        "Doctor",
+        "Nurse",
+        "Caregiver",
+        "Patient"
+    };
 
             if (!allowedRoles.Contains(registerDto.Role))
             {
                 return false;
             }
 
+            // 4. Validate Patient-specific information.
+            if (registerDto.Role == "Patient")
+            {
+                if (!string.IsNullOrWhiteSpace(
+                        registerDto.MedicalRecordNumber))
+                {
+                    var medicalRecordNumber =
+                        registerDto.MedicalRecordNumber.Trim();
+
+                    var existingMedicalRecord =
+                        await _context.Patients.AnyAsync(p =>
+                            p.HospitalId == hospitalId &&
+                            p.MedicalRecordNumber ==
+                                medicalRecordNumber);
+
+                    if (existingMedicalRecord)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            // 5. Begin a database transaction.
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync();
+
+            // 6. Create the Identity account.
             var user = new ApplicationUser
             {
                 UserName = registerDto.UserName,
@@ -162,19 +197,50 @@ namespace RAQEEB.Services.Auth
 
             if (!result.Succeeded)
             {
+                await transaction.RollbackAsync();
                 return false;
             }
 
+            // 7. Assign the selected role.
             var roleResult = await _userManager.AddToRoleAsync(
                 user,
                 registerDto.Role);
 
             if (!roleResult.Succeeded)
             {
-                await _userManager.DeleteAsync(user);
-
+                await transaction.RollbackAsync();
                 return false;
             }
+
+            // 8. Create a Patient profile only when
+            // the selected role is Patient.
+            if (registerDto.Role == "Patient")
+            {
+                var patient = new Patient
+                {
+                    UserId = user.Id,
+                    HospitalId = hospitalId,
+
+                    DateOfBirth = registerDto.DateOfBirth,
+                    Gender = registerDto.Gender,
+
+                    MedicalRecordNumber =
+                        string.IsNullOrWhiteSpace(
+                            registerDto.MedicalRecordNumber)
+                            ? null
+                            : registerDto.MedicalRecordNumber.Trim(),
+
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Patients.Add(patient);
+
+                await _context.SaveChangesAsync();
+            }
+
+            // 9. Commit the transaction.
+            await transaction.CommitAsync();
 
             return true;
         }
