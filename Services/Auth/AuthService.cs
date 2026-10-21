@@ -1,12 +1,13 @@
-﻿using Microsoft.AspNetCore.Identity;
-using Microsoft.IdentityModel.Tokens;
-using RAQEEB.DTOs.Auth;
-using RAQEEB.Entities;
+﻿using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using RAQEEB.Data;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using RAQEEB.Data;
+using RAQEEB.DTOs.Auth;
+using RAQEEB.Entities;
 
 namespace RAQEEB.Services.Auth
 {
@@ -54,6 +55,17 @@ namespace RAQEEB.Services.Auth
 
             var roles =
                 await _userManager.GetRolesAsync(user);
+
+            Guid? patientId = null;
+
+            if (roles.Contains("Patient"))
+            {
+                patientId = await _context.Patients
+                    .Where(p => p.UserId == user.Id)
+                    .Select(p => (Guid?)p.Id)
+                    .FirstOrDefaultAsync();
+            }
+
 
             var claims = new List<Claim>
             {
@@ -113,8 +125,12 @@ namespace RAQEEB.Services.Auth
                 Expiration = expiration,
                 UserId = user.Id,
                 UserName = user.UserName!,
-                Role = roles.FirstOrDefault() ?? string.Empty,
-                HospitalId = user.HospitalId
+                Email = user.Email! ?? String.Empty,
+                PhoneNumber = user.PhoneNumber,
+                HospitalId = user.HospitalId,
+                Roles = roles.ToList(),
+                PatientId = patientId
+
             };
         }
 

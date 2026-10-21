@@ -10,7 +10,8 @@ namespace RAQEEB.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Admin")]
+    //[Authorize(Roles = "Admin")]
+    [Authorize]
     public class UsersController : ControllerBase
     {
         private readonly UserManager<ApplicationUser> _userManager;
@@ -27,6 +28,7 @@ namespace RAQEEB.Controllers
         // GET: api/Users
         // GET: api/Users?role=Doctor
         [HttpGet]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetUsers(
             [FromQuery] string? role = null)
         {
@@ -69,6 +71,7 @@ namespace RAQEEB.Controllers
 
         // GET: api/Users/{id}
         [HttpGet("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetUserById(string id)
         {
             var hospitalId = _currentUser.HospitalId;
@@ -96,5 +99,38 @@ namespace RAQEEB.Controllers
 
             return Ok(result);
         }
+
+        [HttpGet("me")]
+        public async Task<IActionResult> GetMyAccount()
+        {
+            // Get the ID of the currently authenticated user.
+            var userId = _currentUser.UserId;
+
+            // Find that user in the database.
+            var user = await _userManager.FindByIdAsync(userId);
+
+            // Make sure the account exists and is active.
+            if (user == null || !user.IsActive)
+            {
+                return Unauthorized();
+            }
+
+            // Get the user's roles.
+            var roles = await _userManager.GetRolesAsync(user);
+
+            // Return the account information.
+            return Ok(new
+            {
+                user.Id,
+                user.UserName,
+                user.Email,
+                user.PhoneNumber,
+                user.HospitalId,
+                user.IsActive,
+                user.CreatedAt,
+                Roles = roles
+            });
+        }
+
     }
 }
