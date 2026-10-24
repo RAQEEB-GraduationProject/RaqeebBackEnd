@@ -178,8 +178,8 @@ namespace RAQEEB.Controllers
             return Ok(patients);
         }
 
-        // GET: api/Patients/overview
-        [HttpGet("overview")]
+        // GET: api/Patients/assignments
+        [HttpGet("assignments")]
         public async Task<IActionResult> GetPatientsOverview()
         {
             var hospitalId = _currentUser.HospitalId;
