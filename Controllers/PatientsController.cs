@@ -178,6 +178,129 @@ namespace RAQEEB.Controllers
             return Ok(patients);
         }
 
+        // GET: api/Patients/overview
+        [HttpGet("overview")]
+        public async Task<IActionResult> GetPatientsOverview()
+        {
+            var hospitalId = _currentUser.HospitalId;
+            var userId = _currentUser.UserId;
+            var role = _currentUser.Role;
+
+            if (hospitalId == null || userId == null)
+                return Forbid();
+
+            // Get active patients in the current hospital
+            var query = _context.Patients
+                .AsNoTracking()
+                .Where(p =>
+                    p.HospitalId == hospitalId.Value &&
+                    p.IsActive);
+
+            // Apply access rules based on the current user's role
+            if (role != "Admin")
+            {
+                if (role == "Patient")
+                {
+                    // A patient can see their own record
+                    query = query.Where(p => p.UserId == userId);
+                }
+                else
+                {
+                    // Other roles can see patients assigned to them
+                    query = query.Where(p =>
+                        _context.PatientAssignments.Any(a =>
+                            a.PatientId == p.Id &&
+                            a.UserId == userId &&
+                            a.IsActive));
+                }
+            }
+
+            // Get the basic patient information
+            var patients = await query
+                .Select(p => new PatientOverviewDto
+                {
+                    PatientId = p.Id,
+                    PatientName = p.User.UserName ?? string.Empty,
+                    PatientCode = p.MedicalRecordNumber,
+                    Status = p.IsActive ? "Active" : "Inactive"
+                })
+                .ToListAsync();
+
+            // Return an empty list if no patients are found
+            if (patients.Count == 0)
+                return Ok(patients);
+
+            var patientIds = patients
+                .Select(p => p.PatientId)
+                .ToList();
+
+            // Get the active staff assignments and their roles
+            var assignments = await (
+                from a in _context.PatientAssignments.AsNoTracking()
+                join u in _context.Users.AsNoTracking()
+                    on a.UserId equals u.Id
+                join ur in _context.UserRoles.AsNoTracking()
+                    on u.Id equals ur.UserId
+                join r in _context.Roles.AsNoTracking()
+                    on ur.RoleId equals r.Id
+                where patientIds.Contains(a.PatientId)
+                    && a.IsActive
+                    && u.IsActive
+                    && u.HospitalId == hospitalId.Value
+                    && (
+                        r.Name == "Doctor" ||
+                        r.Name == "Nurse" ||
+                        r.Name == "Caregiver"
+                    )
+                select new
+                {
+                    a.PatientId,
+                    UserId = u.Id,
+                    Name = u.UserName ?? string.Empty,
+                    RoleName = r.Name
+                }
+            ).ToListAsync();
+
+            // Match each staff member with their patient
+            var patientsById = patients.ToDictionary(
+                p => p.PatientId
+            );
+
+            foreach (var assignment in assignments)
+            {
+                if (!patientsById.TryGetValue(
+                    assignment.PatientId,
+                    out var patient))
+                {
+                    continue;
+                }
+
+                var staff = new AssignedStaffDto
+                {
+                    UserId = assignment.UserId,
+                    Name = assignment.Name
+                };
+
+                switch (assignment.RoleName)
+                {
+                    case "Doctor":
+                        patient.AssignedDoctor.Add(staff);
+                        break;
+
+                    case "Nurse":
+                        patient.AssignedNurses.Add(staff);
+                        break;
+
+                    case "Caregiver":
+                        patient.AssignedCaregivers.Add(staff);
+                        break;
+                }
+            }
+
+            return Ok(patients);
+        }
+
+
         // GET: api/Patients/{id}
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetPatientById(Guid id)
