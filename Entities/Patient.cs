@@ -1,4 +1,4 @@
-﻿namespace RAQEEB.Entities
+namespace RAQEEB.Entities
 {
     public class Patient
     {
@@ -29,6 +29,17 @@
         public string? Gender { get; set; }
 
         public string? MedicalRecordNumber { get; set; }
+
+        // Medical Details
+        public string? Diagnosis { get; set; }
+
+        public string? Stage { get; set; }
+
+        public string? Treatment { get; set; }
+
+        public string? Protocol { get; set; }
+
+        public string? RiskLevel { get; set; }
 
         public bool IsActive { get; set; } = true;
 

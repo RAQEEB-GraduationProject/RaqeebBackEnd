@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -98,6 +98,11 @@ namespace RAQEEB.Controllers
                     dto.MedicalRecordNumber)
                     ? null
                     : dto.MedicalRecordNumber.Trim(),
+                Diagnosis = dto.Diagnosis,
+                Stage = dto.Stage,
+                Treatment = dto.Treatment,
+                Protocol = dto.Protocol,
+                RiskLevel = dto.RiskLevel,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -116,6 +121,11 @@ namespace RAQEEB.Controllers
                 DateOfBirth = patient.DateOfBirth,
                 Gender = patient.Gender,
                 MedicalRecordNumber = patient.MedicalRecordNumber,
+                Diagnosis = patient.Diagnosis,
+                Stage = patient.Stage,
+                Treatment = patient.Treatment,
+                Protocol = patient.Protocol,
+                RiskLevel = patient.RiskLevel,
                 IsActive = patient.IsActive,
                 CreatedAt = patient.CreatedAt
             };
@@ -170,6 +180,11 @@ namespace RAQEEB.Controllers
                     DateOfBirth = p.DateOfBirth,
                     Gender = p.Gender,
                     MedicalRecordNumber = p.MedicalRecordNumber,
+                    Diagnosis = p.Diagnosis,
+                    Stage = p.Stage,
+                    Treatment = p.Treatment,
+                    Protocol = p.Protocol,
+                    RiskLevel = p.RiskLevel,
                     IsActive = p.IsActive,
                     CreatedAt = p.CreatedAt
                 })
@@ -222,6 +237,11 @@ namespace RAQEEB.Controllers
                     PatientId = p.Id,
                     PatientName = p.User.UserName ?? string.Empty,
                     PatientCode = p.MedicalRecordNumber,
+                    Diagnosis = p.Diagnosis,
+                    Stage = p.Stage,
+                    Treatment = p.Treatment,
+                    Protocol = p.Protocol,
+                    RiskLevel = p.RiskLevel,
                     Status = p.IsActive ? "Active" : "Inactive"
                 })
                 .ToListAsync();
@@ -346,6 +366,11 @@ namespace RAQEEB.Controllers
                     DateOfBirth = p.DateOfBirth,
                     Gender = p.Gender,
                     MedicalRecordNumber = p.MedicalRecordNumber,
+                    Diagnosis = p.Diagnosis,
+                    Stage = p.Stage,
+                    Treatment = p.Treatment,
+                    Protocol = p.Protocol,
+                    RiskLevel = p.RiskLevel,
                     IsActive = p.IsActive,
                     CreatedAt = p.CreatedAt
                 })
@@ -403,6 +428,11 @@ namespace RAQEEB.Controllers
 
             patient.DateOfBirth = dto.DateOfBirth;
             patient.Gender = dto.Gender;
+            patient.Diagnosis = dto.Diagnosis;
+            patient.Stage = dto.Stage;
+            patient.Treatment = dto.Treatment;
+            patient.Protocol = dto.Protocol;
+            patient.RiskLevel = dto.RiskLevel;
 
             await _context.SaveChangesAsync();
 
@@ -419,6 +449,11 @@ namespace RAQEEB.Controllers
                     DateOfBirth = p.DateOfBirth,
                     Gender = p.Gender,
                     MedicalRecordNumber = p.MedicalRecordNumber,
+                    Diagnosis = p.Diagnosis,
+                    Stage = p.Stage,
+                    Treatment = p.Treatment,
+                    Protocol = p.Protocol,
+                    RiskLevel = p.RiskLevel,
                     IsActive = p.IsActive,
                     CreatedAt = p.CreatedAt
                 })
