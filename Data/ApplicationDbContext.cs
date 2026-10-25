@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using RAQEEB.Entities;
 
@@ -77,6 +77,21 @@ namespace RAQEEB.Data
 
                 entity.Property(p => p.MedicalRecordNumber)
                     .HasMaxLength(100);
+
+                entity.Property(p => p.Diagnosis)
+                    .HasMaxLength(200);
+
+                entity.Property(p => p.Stage)
+                    .HasMaxLength(100);
+
+                entity.Property(p => p.Treatment)
+                    .HasMaxLength(200);
+
+                entity.Property(p => p.Protocol)
+                    .HasMaxLength(200);
+
+                entity.Property(p => p.RiskLevel)
+                    .HasMaxLength(50);
 
                 entity.Property(p => p.IsActive)
                     .HasDefaultValue(true);

@@ -1,4 +1,4 @@
-﻿namespace RAQEEB.DTOs.Patients
+namespace RAQEEB.DTOs.Patients
 {
     public class PatientOverviewDto
     {
@@ -15,6 +15,16 @@
         public List<AssignedStaffDto> AssignedCaregivers { get; set; } = new();
 
         public string Status { get; set; } = string.Empty;
+
+        public string? Diagnosis { get; set; }
+
+        public string? Stage { get; set; }
+
+        public string? Treatment { get; set; }
+
+        public string? Protocol { get; set; }
+
+        public string? RiskLevel { get; set; }
     }
 
     public class AssignedStaffDto
