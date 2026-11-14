@@ -38,7 +38,15 @@ namespace RAQEEB.Controllers
             var hospitalId = _currentUser.HospitalId;
 
             if (hospitalId == null)
-                return Forbid();
+            {
+                return StatusCode(
+                    StatusCodes.Status403Forbidden,
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "FORBIDDEN",
+                        "You are not authorized to access this resource."
+                    )
+                );
+            }
 
             // 1. Find the patient in the Admin's hospital.
             var patient = await _context.Patients.FirstOrDefaultAsync(p =>
@@ -48,10 +56,12 @@ namespace RAQEEB.Controllers
 
             if (patient == null)
             {
-                return NotFound(new
-                {
-                    message = "Active patient not found in your hospital."
-                });
+                return NotFound(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "PATIENT_NOT_FOUND",
+                        "Active patient not found in your hospital."
+                    )
+                );
             }
 
             // 2. Find the user being assigned.
@@ -61,10 +71,12 @@ namespace RAQEEB.Controllers
                 user.HospitalId != hospitalId.Value ||
                 !user.IsActive)
             {
-                return BadRequest(new
-                {
-                    message = "The specified user is invalid or does not belong to your hospital."
-                });
+                return BadRequest(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "INVALID_USER",
+                        "The specified user is invalid or does not belong to your hospital."
+                    )
+                );
             }
 
             // 3. Check that the user has an allowed role.
@@ -74,10 +86,12 @@ namespace RAQEEB.Controllers
 
             if (!userRoles.Any(role => allowedRoles.Contains(role)))
             {
-                return BadRequest(new
-                {
-                    message = "Only Doctors, Nurses, and Caregivers can be assigned to patients."
-                });
+                return BadRequest(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "INVALID_ASSIGNMENT_ROLE",
+                        "Only Doctors, Nurses, and Caregivers can be assigned to patients."
+                    )
+                );
             }
 
             // 4. Check for an existing active assignment.
@@ -89,10 +103,12 @@ namespace RAQEEB.Controllers
 
             if (existingAssignment)
             {
-                return Conflict(new
-                {
-                    message = "This user is already assigned to this patient."
-                });
+                return Conflict(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "ASSIGNMENT_ALREADY_EXISTS",
+                        "This user is already assigned to this patient."
+                    )
+                );
             }
 
             // 5. Create the assignment.
@@ -174,7 +190,15 @@ namespace RAQEEB.Controllers
             var role = _currentUser.Role;
 
             if (hospitalId == null || userId == null)
-                return Forbid();
+            {
+                return StatusCode(
+                    StatusCodes.Status403Forbidden,
+                    ApiResponse<List<PatientOverviewDto>>.FailureResponse(
+                        "FORBIDDEN",
+                        "You are not authorized to access this resource."
+                    )
+                );
+            }
 
             // Get active patients in the current hospital
             var query = _context.Patients
@@ -253,6 +277,7 @@ namespace RAQEEB.Controllers
                     )
                 select new
                 {
+                    AssignmentId = a.Id, //new
                     a.PatientId,
                     UserId = u.Id,
                     Name = u.UserName ?? string.Empty,
@@ -276,6 +301,7 @@ namespace RAQEEB.Controllers
 
                 var staff = new AssignedStaffDto
                 {
+                    AssignmentId = assignment.AssignmentId,//new
                     UserId = assignment.UserId,
                     Name = assignment.Name
                 };
@@ -313,7 +339,15 @@ namespace RAQEEB.Controllers
             var role = _currentUser.Role;
 
             if (hospitalId == null || userId == null)
-                return Forbid();
+            {
+                return StatusCode(
+                    StatusCodes.Status403Forbidden,
+                    ApiResponse<PatientAssignmentDetailsDto>.FailureResponse(
+                        "FORBIDDEN",
+                        "You are not authorized to access this resource."
+                    )
+                );
+            }
 
             var query = _context.PatientAssignments
                 .AsNoTracking()
@@ -327,22 +361,192 @@ namespace RAQEEB.Controllers
             }
 
             var assignment = await query
-                .Select(a => new
+                .Select(a => new PatientAssignmentDetailsDto
                 {
-                    a.Id,
-                    a.PatientId,
+                    Id = a.Id,
+                    PatientId = a.PatientId,
                     PatientUserName = a.Patient.User.UserName ?? string.Empty,
-                    a.UserId,
+                    UserId = a.UserId,
                     AssignedUserName = a.User.UserName ?? string.Empty,
-                    a.AssignedAt,
-                    a.IsActive
+                    AssignedAt = a.AssignedAt,
+                    IsActive = a.IsActive
                 })
                 .FirstOrDefaultAsync();
 
             if (assignment == null)
-                return NotFound();
+            {
+                return NotFound(
+                    ApiResponse<PatientAssignmentDetailsDto>.FailureResponse(
+                        "ASSIGNMENT_NOT_FOUND",
+                        "Assignment not found or you do not have access to it."
+                    )
+                );
+            }
 
-            return Ok(assignment);
+            return Ok(
+                ApiResponse<PatientAssignmentDetailsDto>.SuccessResponse(
+                    assignment,
+                    "Assignment retrieved successfully"
+                )
+            );
         }
+
+
+
+        [HttpDelete("{id:guid}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UnassignUser(Guid id)
+        {
+            var hospitalId = _currentUser.HospitalId;
+
+            if (hospitalId == null)
+            {
+                return StatusCode(
+                    StatusCodes.Status403Forbidden,
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "FORBIDDEN",
+                        "You are not authorized to access this resource."
+                    )
+                );
+            }
+
+            // 1. Find the assignment in the Admin's hospital.
+            var assignment = await _context.PatientAssignments
+                .FirstOrDefaultAsync(a =>
+                    a.Id == id &&
+                    a.Patient.HospitalId == hospitalId.Value);
+
+            if (assignment == null)
+            {
+                return NotFound(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "ASSIGNMENT_NOT_FOUND",
+                        "Assignment not found in your hospital."
+                    )
+                );
+            }
+
+            // 2. Check whether the assignment is already inactive.
+            if (!assignment.IsActive)
+            {
+                return Conflict(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "ASSIGNMENT_ALREADY_INACTIVE",
+                        "This assignment has already been deactivated."
+                    )
+                );
+            }
+
+            // 3. Soft delete: deactivate the assignment.
+            assignment.IsActive = false;
+
+            await _context.SaveChangesAsync();
+
+            // 4. Return the updated assignment.
+            var response = new PatientAssignmentResponseDto
+            {
+                Id = assignment.Id,
+                PatientId = assignment.PatientId,
+                UserId = assignment.UserId,
+                AssignedAt = assignment.AssignedAt,
+                IsActive = assignment.IsActive
+            };
+
+            return Ok(
+                ApiResponse<PatientAssignmentResponseDto>.SuccessResponse(
+                    response,
+                    "User successfully unassigned from patient."
+                )
+            );
+        }
+
+        // Reactivate a previously deactivated assignment
+        [HttpPatch("{id:guid}/reactivate")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ReactivateAssignment(Guid id)
+        {
+            var hospitalId = _currentUser.HospitalId;
+
+            if (hospitalId == null)
+            {
+                return StatusCode(
+                    StatusCodes.Status403Forbidden,
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "FORBIDDEN",
+                        "You are not authorized to access this resource."
+                    )
+                );
+            }
+
+            // 1. Find the assignment in the Admin's hospital.
+            var assignment = await _context.PatientAssignments
+                .FirstOrDefaultAsync(a =>
+                    a.Id == id &&
+                    a.Patient.HospitalId == hospitalId.Value);
+
+            if (assignment == null)
+            {
+                return NotFound(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "ASSIGNMENT_NOT_FOUND",
+                        "Assignment not found in your hospital."
+                    )
+                );
+            }
+
+            // 2. Check whether the assignment is already active.
+            if (assignment.IsActive)
+            {
+                return Conflict(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "ASSIGNMENT_ALREADY_ACTIVE",
+                        "This assignment is already active."
+                    )
+                );
+            }
+
+            // 3. Prevent duplicate active assignments.
+            var existingActiveAssignment = await _context.PatientAssignments
+                .AnyAsync(a =>
+                    a.Id != assignment.Id &&
+                    a.PatientId == assignment.PatientId &&
+                    a.UserId == assignment.UserId &&
+                    a.IsActive);
+
+            if (existingActiveAssignment)
+            {
+                return Conflict(
+                    ApiResponse<PatientAssignmentResponseDto>.FailureResponse(
+                        "ACTIVE_ASSIGNMENT_EXISTS",
+                        "This user already has an active assignment to this patient."
+                    )
+                );
+            }
+
+            // 4. Reactivate the assignment.
+            assignment.IsActive = true;
+
+            await _context.SaveChangesAsync();
+
+            // 5. Return the updated assignment.
+            var response = new PatientAssignmentResponseDto
+            {
+                Id = assignment.Id,
+                PatientId = assignment.PatientId,
+                UserId = assignment.UserId,
+                AssignedAt = assignment.AssignedAt,
+                IsActive = assignment.IsActive
+            };
+
+            return Ok(
+                ApiResponse<PatientAssignmentResponseDto>.SuccessResponse(
+                    response,
+                    "Assignment successfully reactivated."
+                )
+            );
+        }
+
+
+
     }
 }
