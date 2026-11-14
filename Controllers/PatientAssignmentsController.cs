@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RAQEEB.Common;
 using RAQEEB.Data;
+using RAQEEB.DTOs.Common;
 using RAQEEB.DTOs.PatientAssignments;
+using RAQEEB.DTOs.Patients;
 using RAQEEB.Entities;
 
 namespace RAQEEB.Controllers
@@ -107,20 +109,65 @@ namespace RAQEEB.Controllers
             await _context.SaveChangesAsync();
 
             // 6. Return the created assignment.
-            return StatusCode(201, new
+            // New API Response structure
+            var response = new PatientAssignmentResponseDto
             {
-                assignment.Id,
-                assignment.PatientId,
-                assignment.UserId,
-                assignment.AssignedAt,
-                assignment.IsActive
-            });
+                Id = assignment.Id,
+                PatientId = assignment.PatientId,
+                UserId = assignment.UserId,
+                AssignedAt = assignment.AssignedAt,
+                IsActive = assignment.IsActive
+            };
+
+            return StatusCode(
+                201,
+                ApiResponse<PatientAssignmentResponseDto>.SuccessResponse(
+                    response,
+                    "Patient assignment created successfully"
+                )
+            );
 
 
         }
 
-        [HttpGet]
-        public async Task<IActionResult> GetAssignments()
+        //[HttpGet]
+        //public async Task<IActionResult> GetAssignments()
+        //{
+        //    var hospitalId = _currentUser.HospitalId;
+        //    var userId = _currentUser.UserId;
+        //    var role = _currentUser.Role;
+
+        //    if (hospitalId == null || userId == null)
+        //        return Forbid();
+
+        //    var query = _context.PatientAssignments
+        //        .AsNoTracking()
+        //        .Where(a => a.Patient.HospitalId == hospitalId.Value);
+
+        //    if (role != "Admin")
+        //    {
+        //        query = query.Where(a => a.UserId == userId); //doctors see only their patients
+        //    }
+
+        //    var assignments = await query
+        //        .Select(a => new
+        //        {
+        //            a.Id,
+        //            a.PatientId,
+        //            PatientUserName = a.Patient.User.UserName ?? string.Empty,
+        //            a.UserId,
+        //            AssignedUserName = a.User.UserName ?? string.Empty,
+        //            a.AssignedAt,
+        //            a.IsActive
+        //        })
+        //        .ToListAsync();
+
+        //    return Ok(assignments);
+        //}
+
+        // GET: api/Patients/assignments
+        [HttpGet("Assignments")]
+        public async Task<IActionResult> GetPatientsOverview()
         {
             var hospitalId = _currentUser.HospitalId;
             var userId = _currentUser.UserId;
@@ -129,30 +176,134 @@ namespace RAQEEB.Controllers
             if (hospitalId == null || userId == null)
                 return Forbid();
 
-            var query = _context.PatientAssignments
+            // Get active patients in the current hospital
+            var query = _context.Patients
                 .AsNoTracking()
-                .Where(a => a.Patient.HospitalId == hospitalId.Value);
+                .Where(p =>
+                    p.HospitalId == hospitalId.Value &&
+                    p.IsActive);
 
+            // Apply access rules based on the current user's role
             if (role != "Admin")
             {
-                query = query.Where(a => a.UserId == userId); //doctors see only their patients
+                if (role == "Patient")
+                {
+                    // A patient can see their own record
+                    query = query.Where(p => p.UserId == userId);
+                }
+                else
+                {
+                    // Other roles can see patients assigned to them
+                    query = query.Where(p =>
+                        _context.PatientAssignments.Any(a =>
+                            a.PatientId == p.Id &&
+                            a.UserId == userId &&
+                            a.IsActive));
+                }
             }
 
-            var assignments = await query
-                .Select(a => new
+            // Get the basic patient information
+            var patients = await query
+                .Select(p => new PatientOverviewDto
                 {
-                    a.Id,
-                    a.PatientId,
-                    PatientUserName = a.Patient.User.UserName ?? string.Empty,
-                    a.UserId,
-                    AssignedUserName = a.User.UserName ?? string.Empty,
-                    a.AssignedAt,
-                    a.IsActive
+                    PatientId = p.Id,
+                    PatientName = p.User.UserName ?? string.Empty,
+                    PatientCode = p.MedicalRecordNumber,
+                    //Diagnosis = p.Diagnosis,
+                    //Stage = p.Stage,
+                    //Treatment = p.Treatment,
+                    //Protocol = p.Protocol,
+                    //RiskLevel = p.RiskLevel,
+                    //Status = p.IsActive ? "Active" : "Inactive"
                 })
                 .ToListAsync();
 
-            return Ok(assignments);
+            // Return an empty list if no patients are found
+            if (patients.Count == 0)
+            {
+                return Ok(
+                    ApiResponse<List<PatientOverviewDto>>.SuccessResponse(
+                        patients,
+                        "No patients found"
+                    )
+                );
+            }
+
+            var patientIds = patients
+                .Select(p => p.PatientId)
+                .ToList();
+
+            // Get the active staff assignments and their roles
+            var assignments = await (
+                from a in _context.PatientAssignments.AsNoTracking()
+                join u in _context.Users.AsNoTracking()
+                    on a.UserId equals u.Id
+                join ur in _context.UserRoles.AsNoTracking()
+                    on u.Id equals ur.UserId
+                join r in _context.Roles.AsNoTracking()
+                    on ur.RoleId equals r.Id
+                where patientIds.Contains(a.PatientId)
+                    && a.IsActive
+                    && u.IsActive
+                    && u.HospitalId == hospitalId.Value
+                    && (
+                        r.Name == "Doctor" ||
+                        r.Name == "Nurse" ||
+                        r.Name == "Caregiver"
+                    )
+                select new
+                {
+                    a.PatientId,
+                    UserId = u.Id,
+                    Name = u.UserName ?? string.Empty,
+                    RoleName = r.Name
+                }
+            ).ToListAsync();
+
+            // Match each staff member with their patient
+            var patientsById = patients.ToDictionary(
+                p => p.PatientId
+            );
+
+            foreach (var assignment in assignments)
+            {
+                if (!patientsById.TryGetValue(
+                    assignment.PatientId,
+                    out var patient))
+                {
+                    continue;
+                }
+
+                var staff = new AssignedStaffDto
+                {
+                    UserId = assignment.UserId,
+                    Name = assignment.Name
+                };
+
+                switch (assignment.RoleName)
+                {
+                    case "Doctor":
+                        patient.AssignedDoctor.Add(staff);
+                        break;
+
+                    case "Nurse":
+                        patient.AssignedNurses.Add(staff);
+                        break;
+
+                    case "Caregiver":
+                        patient.AssignedCaregivers.Add(staff);
+                        break;
+                }
+            }
+
+            return Ok(
+                ApiResponse<List<PatientOverviewDto>>.SuccessResponse(
+                patients,
+                "Patients retrieved successfully"
+                )
+);
         }
+
 
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetAssignmentById(Guid id)

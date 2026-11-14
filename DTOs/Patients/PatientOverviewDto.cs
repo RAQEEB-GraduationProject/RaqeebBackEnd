@@ -1,5 +1,7 @@
 namespace RAQEEB.DTOs.Patients
 {
+
+    // THIS IS PATIENT ASSIGNMENT STUFF DTO, NOT PATIENT DTO. IT IS USED TO RETURN ASSIGNED STAFF FOR A PATIENT.
     public class PatientOverviewDto
     {
         public Guid PatientId { get; set; }
@@ -13,18 +15,6 @@ namespace RAQEEB.DTOs.Patients
         public List<AssignedStaffDto> AssignedNurses { get; set; } = new();
 
         public List<AssignedStaffDto> AssignedCaregivers { get; set; } = new();
-
-        public string Status { get; set; } = string.Empty;
-
-        public string? Diagnosis { get; set; }
-
-        public string? Stage { get; set; }
-
-        public string? Treatment { get; set; }
-
-        public string? Protocol { get; set; }
-
-        public string? RiskLevel { get; set; }
     }
 
     public class AssignedStaffDto
