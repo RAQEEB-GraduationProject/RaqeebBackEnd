@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RAQEEB.Common;
+using RAQEEB.DTOs.Common;
 using RAQEEB.DTOs.Auth;
 using RAQEEB.Services.Auth;
 
@@ -36,7 +37,12 @@ namespace RAQEEB.Controllers
                 });
             }
 
-            return Ok(result);
+            return Ok(
+                ApiResponse<object>.SuccessResponse( // object is used here because the response type is not specified in the ApiResponse class
+                    result,
+                    "Login successful."
+                )
+            );
         }
 
         [Authorize(Roles = "Admin")]
@@ -51,10 +57,12 @@ namespace RAQEEB.Controllers
 
             if (!_currentUser.HospitalId.HasValue)
             {
-                return BadRequest(new
-                {
-                    message = "Current user is not assigned to a hospital."
-                });
+                return BadRequest(
+                    ApiResponse<object>.FailureResponse(
+                        "HOSPITAL_NOT_ASSIGNED",
+                        "Current user is not assigned to a hospital."
+                    )
+                );
             }
 
             var success = await _authService.RegisterAsync(
@@ -63,16 +71,20 @@ namespace RAQEEB.Controllers
 
             if (!success)
             {
-                return BadRequest(new
-                {
-                    message = "User registration failed."
-                });
+                return BadRequest(
+                    ApiResponse<object>.FailureResponse(
+                        "REGISTRATION_FAILED",
+                        "User registration failed."
+                    )
+                );
             }
 
-            return Ok(new
-            {
-                message = "User registered successfully."
-            });
+            return Ok(
+                ApiResponse<object?>.SuccessResponse(
+                    null,
+                    "User registered successfully."
+                )
+            );
         }
     }
 }

@@ -1,18 +1,46 @@
 ﻿using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using RAQEEB.Common;
 using RAQEEB.Data;
+using RAQEEB.DTOs.Common;
 using RAQEEB.Entities;
 using RAQEEB.Services.Auth;
-using RAQEEB.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+//builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(x => x.Value?.Errors.Count > 0)
+                .SelectMany(x => x.Value!.Errors.Select(error =>
+                    new ApiError
+                    {
+                        Field = x.Key,
+                        Message = string.IsNullOrEmpty(error.ErrorMessage)
+                            ? "Invalid value."
+                            : error.ErrorMessage
+                    }))
+                .ToList();
+
+            var response = ApiResponse<object>.FailureResponse(
+                "VALIDATION_ERROR",
+                "One or more validation errors occurred.",
+                errors
+            );
+
+            return new BadRequestObjectResult(response);
+        };
+    });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));

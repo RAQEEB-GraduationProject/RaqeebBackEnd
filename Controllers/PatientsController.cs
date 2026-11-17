@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RAQEEB.Common;
+using RAQEEB.DTOs.Common;
 using RAQEEB.Data;
 using RAQEEB.DTOs.Patients;
 using RAQEEB.Entities;
@@ -43,18 +44,22 @@ namespace RAQEEB.Controllers
 
             if (user == null || user.HospitalId != hospitalId.Value)
             {
-                return BadRequest(new
-                {
-                    message = "The specified user does not belong to your hospital."
-                });
+                return BadRequest(
+                ApiResponse<PatientResponseDto>.FailureResponse(
+                    "INVALID_USER",
+                    "The specified user does not belong to your hospital."
+                )
+            );
             } //verify that user belongs to same hospital as admin or doctor 
 
             if (!await _userManager.IsInRoleAsync(user, "Patient"))
             {
-                return BadRequest(new
-                {
-                    message = "The specified user must have the Patient role."
-                });
+                return BadRequest(
+                ApiResponse<PatientResponseDto>.FailureResponse(
+                    "INVALID_ROLE",
+                    "The specified user must have the Patient role."
+                )
+            );
             }
 
             var profileExists = await _context.Patients
@@ -62,10 +67,12 @@ namespace RAQEEB.Controllers
 
             if (profileExists)
             {
-                return Conflict(new  //409
-                {
-                    message = "This user already has a patient profile."
-                });
+                return Conflict(
+                ApiResponse<PatientResponseDto>.FailureResponse(
+                    "PATIENT_PROFILE_EXISTS",
+                    "This user already has a patient profile."
+                )
+            );
             }
 
             if (!string.IsNullOrWhiteSpace(dto.MedicalRecordNumber))
@@ -80,10 +87,12 @@ namespace RAQEEB.Controllers
                 //medical record numbers are being treated as unique within each hospital
                 if (recordExists)
                 {
-                    return Conflict(new
-                    {
-                        message = "This medical record number is already in use."
-                    });
+                    return Conflict(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "MRN_ALREADY_EXISTS",
+                        "This medical record number is already in use."
+                    )
+                );
                 }
             }
 
@@ -130,10 +139,13 @@ namespace RAQEEB.Controllers
                 CreatedAt = patient.CreatedAt
             };
 
-            return CreatedAtAction(
-                nameof(GetPatientById),
-                new { id = patient.Id },
-                result);
+            return StatusCode(
+                StatusCodes.Status201Created,
+                ApiResponse<PatientResponseDto>.SuccessResponse(
+                    result,
+                    "Patient created successfully."
+                )
+            );
         }
 
         // GET: api/Patients
@@ -190,7 +202,14 @@ namespace RAQEEB.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(patients);
+            return Ok(
+                ApiResponse<List<PatientResponseDto>>.SuccessResponse(
+                    patients,
+                    patients.Count == 0
+                        ? "No patients found."
+                        : "Patients retrieved successfully."
+                )
+            );
         }
 
         
@@ -251,9 +270,21 @@ namespace RAQEEB.Controllers
                 .FirstOrDefaultAsync();
 
             if (patient == null)
-                return NotFound();
+            {
+                return NotFound(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "PATIENT_NOT_FOUND",
+                        "Patient not found or you do not have access to this patient."
+                    )
+                );
+            }
 
-            return Ok(patient);
+            return Ok(
+                ApiResponse<PatientResponseDto>.SuccessResponse(
+                    patient,
+                    "Patient retrieved successfully."
+                )
+            );
         }
 
         [HttpPut("{id:guid}")]
@@ -273,7 +304,14 @@ namespace RAQEEB.Controllers
                 p.IsActive);
 
             if (patient == null)
-                return NotFound();
+            {
+                return NotFound(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "PATIENT_NOT_FOUND",
+                        "Patient not found in your hospital."
+                    )
+                );
+            }
 
             if (!string.IsNullOrWhiteSpace(dto.MedicalRecordNumber))
             {
@@ -287,10 +325,12 @@ namespace RAQEEB.Controllers
                 if (recordExists)
                 {
 
-                    return Conflict(new
-                    {
-                        message = "This medical record number is already in use."
-                    });
+                    return Conflict(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "MRN_ALREADY_EXISTS",
+                        "This medical record number is already in use."
+                    )
+                );
                 }
 
                 patient.MedicalRecordNumber = recordNumber;
@@ -333,7 +373,12 @@ namespace RAQEEB.Controllers
                 })
                 .FirstAsync();
 
-            return Ok(result);
+            return Ok(
+                ApiResponse<PatientResponseDto>.SuccessResponse(
+                    result,
+                    "Patient updated successfully."
+                )
+            );
         }
 
 
@@ -353,13 +398,44 @@ namespace RAQEEB.Controllers
                 p.IsActive);
 
             if (patient == null)
-                return NotFound();
+            {
+                return NotFound(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "PATIENT_NOT_FOUND",
+                        "Patient not found or already inactive."
+                    )
+                );
+            }
 
             patient.IsActive = false;
 
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return NoContent(); // old 
+
+            //var response = new PatientResponseDto 
+            //{
+            //    Id = patient.Id,
+            //    UserId = patient.UserId,
+            //    HospitalId = patient.HospitalId,
+            //    DateOfBirth = patient.DateOfBirth,
+            //    Gender = patient.Gender,
+            //    MedicalRecordNumber = patient.MedicalRecordNumber,
+            //    Diagnosis = patient.Diagnosis,
+            //    Stage = patient.Stage,
+            //    Treatment = patient.Treatment,
+            //    Protocol = patient.Protocol,
+            //    RiskLevel = patient.RiskLevel,
+            //    IsActive = patient.IsActive,
+            //    CreatedAt = patient.CreatedAt
+            //};
+
+            //return Ok(
+            //    ApiResponse<PatientResponseDto>.SuccessResponse(
+            //        response,
+            //        "Patient deactivated successfully."
+            //    )
+            //);
         }
 
 
@@ -378,14 +454,23 @@ namespace RAQEEB.Controllers
                 p.HospitalId == hospitalId.Value);
 
             if (patient == null)
-                return NotFound();
+            {
+                return NotFound(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "PATIENT_NOT_FOUND",
+                        "Patient not found in your hospital."
+                    )
+                );
+            }
 
             if (patient.IsActive)
             {
-                return BadRequest(new
-                {
-                    message = "This patient is already active."
-                });
+                return Conflict(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "PATIENT_ALREADY_ACTIVE",
+                        "This patient is already active."
+                    )
+                );
             }
 
             patient.IsActive = true;
@@ -393,6 +478,30 @@ namespace RAQEEB.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+
+            //var response = new PatientResponseDto
+            //{
+            //    Id = patient.Id,
+            //    UserId = patient.UserId,
+            //    HospitalId = patient.HospitalId,
+            //    DateOfBirth = patient.DateOfBirth,
+            //    Gender = patient.Gender,
+            //    MedicalRecordNumber = patient.MedicalRecordNumber,
+            //    Diagnosis = patient.Diagnosis,
+            //    Stage = patient.Stage,
+            //    Treatment = patient.Treatment,
+            //    Protocol = patient.Protocol,
+            //    RiskLevel = patient.RiskLevel,
+            //    IsActive = patient.IsActive,
+            //    CreatedAt = patient.CreatedAt
+            //};
+
+            //return Ok(
+            //    ApiResponse<PatientResponseDto>.SuccessResponse(
+            //        response,
+            //        "Patient reactivated successfully."
+            //    )
+            //);
         }
 
 

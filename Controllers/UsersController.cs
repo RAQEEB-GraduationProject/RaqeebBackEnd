@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RAQEEB.Common;
+using RAQEEB.DTOs.Common;
 using RAQEEB.DTOs.Users;
 using RAQEEB.Entities;
 
@@ -66,7 +67,14 @@ namespace RAQEEB.Controllers
                 });
             }
 
-            return Ok(result);
+            return Ok(
+                ApiResponse<List<UserResponseDto>>.SuccessResponse(
+                    result,
+                    result.Count == 0
+                        ? "No users found."
+                        : "Users retrieved successfully."
+                )
+            );
         }
 
         // GET: api/Users/{id}
@@ -82,7 +90,14 @@ namespace RAQEEB.Controllers
             var user = await _userManager.FindByIdAsync(id);
 
             if (user == null || user.HospitalId != hospitalId.Value)
-                return NotFound();
+            {
+                return NotFound(
+                    ApiResponse<UserResponseDto>.FailureResponse(
+                        "USER_NOT_FOUND",
+                        "User not found in your hospital."
+                    )
+                );
+            }
 
             var roles = await _userManager.GetRolesAsync(user);
 
@@ -97,7 +112,12 @@ namespace RAQEEB.Controllers
                 IsActive = user.IsActive
             };
 
-            return Ok(result);
+            return Ok(
+                ApiResponse<UserResponseDto>.SuccessResponse(
+                    result,
+                    "User retrieved successfully."
+                )
+            );
         }
 
         [HttpGet("me")]
@@ -119,7 +139,7 @@ namespace RAQEEB.Controllers
             var roles = await _userManager.GetRolesAsync(user);
 
             // Return the account information.
-            return Ok(new
+            var result = new
             {
                 user.Id,
                 user.UserName,
@@ -129,7 +149,14 @@ namespace RAQEEB.Controllers
                 user.IsActive,
                 user.CreatedAt,
                 Roles = roles
-            });
+            };
+
+            return Ok(
+                ApiResponse<object>.SuccessResponse(
+                    result,
+                    "Account information retrieved successfully."
+                )
+            );
         }
 
     }
