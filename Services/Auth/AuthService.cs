@@ -134,9 +134,9 @@ namespace RAQEEB.Services.Auth
             };
         }
 
-        public async Task<bool> RegisterAsync(
-    RegisterDto registerDto,
-    Guid hospitalId)
+        public async Task<RegisterResponseDto?> RegisterAsync(
+                    RegisterDto registerDto,
+                    Guid hospitalId)
         {
             // 1. Check whether the username already exists.
             var existingUser = await _userManager
@@ -144,7 +144,7 @@ namespace RAQEEB.Services.Auth
 
             if (existingUser != null)
             {
-                return false;
+                return null;
             }
 
             // 2. Check whether the email already exists.
@@ -153,7 +153,7 @@ namespace RAQEEB.Services.Auth
 
             if (existingEmail != null)
             {
-                return false;
+                return null;
             }
 
             // 3. Validate the selected role.
@@ -167,36 +167,14 @@ namespace RAQEEB.Services.Auth
 
             if (!allowedRoles.Contains(registerDto.Role))
             {
-                return false;
+                return null;
             }
 
-            // 4. Validate Patient-specific information.
-            if (registerDto.Role == "Patient")
-            {
-                if (!string.IsNullOrWhiteSpace(
-                        registerDto.MedicalRecordNumber))
-                {
-                    var medicalRecordNumber =
-                        registerDto.MedicalRecordNumber.Trim();
-
-                    var existingMedicalRecord =
-                        await _context.Patients.AnyAsync(p =>
-                            p.HospitalId == hospitalId &&
-                            p.MedicalRecordNumber ==
-                                medicalRecordNumber);
-
-                    if (existingMedicalRecord)
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            // 5. Begin a database transaction.
+            // 4. Begin a database transaction.
             await using var transaction =
                 await _context.Database.BeginTransactionAsync();
 
-            // 6. Create the Identity account.
+            // 5. Create the Identity account.
             var user = new ApplicationUser
             {
                 UserName = registerDto.UserName,
@@ -214,10 +192,10 @@ namespace RAQEEB.Services.Auth
             if (!result.Succeeded)
             {
                 await transaction.RollbackAsync();
-                return false;
+                return null;
             }
 
-            // 7. Assign the selected role.
+            // 6. Assign the selected role.
             var roleResult = await _userManager.AddToRoleAsync(
                 user,
                 registerDto.Role);
@@ -225,40 +203,20 @@ namespace RAQEEB.Services.Auth
             if (!roleResult.Succeeded)
             {
                 await transaction.RollbackAsync();
-                return false;
+                return null;
             }
 
-            // 8. Create a Patient profile only when
-            // the selected role is Patient.
-            if (registerDto.Role == "Patient")
-            {
-                var patient = new Patient
-                {
-                    UserId = user.Id,
-                    HospitalId = hospitalId,
-
-                    DateOfBirth = registerDto.DateOfBirth,
-                    Gender = registerDto.Gender,
-
-                    MedicalRecordNumber =
-                        string.IsNullOrWhiteSpace(
-                            registerDto.MedicalRecordNumber)
-                            ? null
-                            : registerDto.MedicalRecordNumber.Trim(),
-
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                _context.Patients.Add(patient);
-
-                await _context.SaveChangesAsync();
-            }
-
-            // 9. Commit the transaction.
+            // 7. Commit the transaction.
             await transaction.CommitAsync();
 
-            return true;
+            // 8. Return the newly created account information.
+            return new RegisterResponseDto
+            {
+                UserId = user.Id,
+                UserName = user.UserName ?? string.Empty,
+                Email = user.Email ?? string.Empty,
+                Role = registerDto.Role
+            };
         }
     }
 }

@@ -48,7 +48,7 @@ namespace RAQEEB.Controllers
         [Authorize(Roles = "Admin")]
         [HttpPost("register")]
         public async Task<IActionResult> Register(
-            [FromBody] RegisterDto registerDto)
+        [FromBody] RegisterDto registerDto)
         {
             if (!_currentUser.IsAuthenticated)
             {
@@ -65,14 +65,14 @@ namespace RAQEEB.Controllers
                 );
             }
 
-            var success = await _authService.RegisterAsync(
+            var result = await _authService.RegisterAsync(
                 registerDto,
                 _currentUser.HospitalId.Value);
 
-            if (!success)
+            if (result == null)
             {
                 return BadRequest(
-                    ApiResponse<object>.FailureResponse(
+                    ApiResponse<RegisterResponseDto>.FailureResponse(
                         "REGISTRATION_FAILED",
                         "User registration failed."
                     )
@@ -80,8 +80,8 @@ namespace RAQEEB.Controllers
             }
 
             return Ok(
-                ApiResponse<object?>.SuccessResponse(
-                    null,
+                ApiResponse<RegisterResponseDto>.SuccessResponse(
+                    result,
                     "User registered successfully."
                 )
             );

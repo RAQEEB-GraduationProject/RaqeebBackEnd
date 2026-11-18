@@ -6,7 +6,7 @@ namespace RAQEEB.Services.Auth
     {
         Task<LoginResponseDto?> LoginAsync(LoginDto loginDto);
 
-        Task<bool> RegisterAsync(
+        Task<RegisterResponseDto?> RegisterAsync(
             RegisterDto registerDto,
             Guid hospitalId);
     }
