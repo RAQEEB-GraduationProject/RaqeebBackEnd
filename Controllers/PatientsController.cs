@@ -162,8 +162,7 @@ namespace RAQEEB.Controllers
             var query = _context.Patients
                 .AsNoTracking() //for read-only queries, improves performance by not tracking changes to the entities
                 .Where(p =>
-                    p.HospitalId == hospitalId.Value &&
-                    p.IsActive);
+                    p.HospitalId == hospitalId.Value);
 
             if (role != "Admin")
             {
@@ -229,8 +228,7 @@ namespace RAQEEB.Controllers
                 .AsNoTracking()
                 .Where(p =>
                     p.Id == id &&
-                    p.HospitalId == hospitalId.Value &&
-                    p.IsActive);
+                    p.HospitalId == hospitalId.Value);
 
             if (role != "Admin")
             {
@@ -383,6 +381,7 @@ namespace RAQEEB.Controllers
 
 
         //delete a patient profile (soft delete)
+        // Delete a patient profile (soft delete)
         [HttpDelete("{id:guid}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeletePatient(Guid id)
@@ -407,39 +406,39 @@ namespace RAQEEB.Controllers
                 );
             }
 
+            // Find the Identity account associated with this patient.
+            var user = await _userManager.FindByIdAsync(patient.UserId);
+
+            if (user == null)
+            {
+                return Conflict(
+                    ApiResponse<PatientResponseDto>.FailureResponse(
+                        "PATIENT_USER_NOT_FOUND",
+                        "The patient profile has no associated user account."
+                    )
+                );
+            }
+
+            // Start a transaction to update both records together.
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync();
+
+            // Deactivate the clinical patient profile.
             patient.IsActive = false;
+
+            // Deactivate the associated login account.
+            user.IsActive = false;
 
             await _context.SaveChangesAsync();
 
-            return NoContent(); // old 
+            await transaction.CommitAsync();
 
-            //var response = new PatientResponseDto 
-            //{
-            //    Id = patient.Id,
-            //    UserId = patient.UserId,
-            //    HospitalId = patient.HospitalId,
-            //    DateOfBirth = patient.DateOfBirth,
-            //    Gender = patient.Gender,
-            //    MedicalRecordNumber = patient.MedicalRecordNumber,
-            //    Diagnosis = patient.Diagnosis,
-            //    Stage = patient.Stage,
-            //    Treatment = patient.Treatment,
-            //    Protocol = patient.Protocol,
-            //    RiskLevel = patient.RiskLevel,
-            //    IsActive = patient.IsActive,
-            //    CreatedAt = patient.CreatedAt
-            //};
-
-            //return Ok(
-            //    ApiResponse<PatientResponseDto>.SuccessResponse(
-            //        response,
-            //        "Patient deactivated successfully."
-            //    )
-            //);
+            return NoContent();
         }
 
 
         //ReActivate a patient profile
+        // Reactivate a patient profile
         [HttpPatch("{id:guid}/reactivate")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> ReactivatePatient(Guid id)
@@ -473,35 +472,12 @@ namespace RAQEEB.Controllers
                 );
             }
 
+            // Reactivate only the clinical patient profile.
             patient.IsActive = true;
 
             await _context.SaveChangesAsync();
 
             return NoContent();
-
-            //var response = new PatientResponseDto
-            //{
-            //    Id = patient.Id,
-            //    UserId = patient.UserId,
-            //    HospitalId = patient.HospitalId,
-            //    DateOfBirth = patient.DateOfBirth,
-            //    Gender = patient.Gender,
-            //    MedicalRecordNumber = patient.MedicalRecordNumber,
-            //    Diagnosis = patient.Diagnosis,
-            //    Stage = patient.Stage,
-            //    Treatment = patient.Treatment,
-            //    Protocol = patient.Protocol,
-            //    RiskLevel = patient.RiskLevel,
-            //    IsActive = patient.IsActive,
-            //    CreatedAt = patient.CreatedAt
-            //};
-
-            //return Ok(
-            //    ApiResponse<PatientResponseDto>.SuccessResponse(
-            //        response,
-            //        "Patient reactivated successfully."
-            //    )
-            //);
         }
 
 
