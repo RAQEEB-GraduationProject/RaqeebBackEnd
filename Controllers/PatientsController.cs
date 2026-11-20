@@ -103,6 +103,7 @@ namespace RAQEEB.Controllers
                 HospitalId = hospitalId.Value,
                 DateOfBirth = dto.DateOfBirth,
                 Gender = dto.Gender,
+                BloodGroup = dto.BloodGroup?.Trim(),
                 MedicalRecordNumber = string.IsNullOrWhiteSpace(
                     dto.MedicalRecordNumber)
                     ? null
@@ -129,6 +130,7 @@ namespace RAQEEB.Controllers
                 HospitalId = patient.HospitalId,
                 DateOfBirth = patient.DateOfBirth,
                 Gender = patient.Gender,
+                BloodGroup = patient.BloodGroup,
                 MedicalRecordNumber = patient.MedicalRecordNumber,
                 Diagnosis = patient.Diagnosis,
                 Stage = patient.Stage,
@@ -190,6 +192,7 @@ namespace RAQEEB.Controllers
                     HospitalId = p.HospitalId,
                     DateOfBirth = p.DateOfBirth,
                     Gender = p.Gender,
+                    BloodGroup = p.BloodGroup,
                     MedicalRecordNumber = p.MedicalRecordNumber,
                     Diagnosis = p.Diagnosis,
                     Stage = p.Stage,
@@ -256,6 +259,7 @@ namespace RAQEEB.Controllers
                     HospitalId = p.HospitalId,
                     DateOfBirth = p.DateOfBirth,
                     Gender = p.Gender,
+                    BloodGroup = p.BloodGroup,
                     MedicalRecordNumber = p.MedicalRecordNumber,
                     Diagnosis = p.Diagnosis,
                     Stage = p.Stage,
@@ -340,6 +344,7 @@ namespace RAQEEB.Controllers
 
             patient.DateOfBirth = dto.DateOfBirth;
             patient.Gender = dto.Gender;
+            patient.BloodGroup = dto.BloodGroup?.Trim();
             patient.Diagnosis = dto.Diagnosis;
             patient.Stage = dto.Stage;
             patient.Treatment = dto.Treatment;
@@ -360,6 +365,7 @@ namespace RAQEEB.Controllers
                     HospitalId = p.HospitalId,
                     DateOfBirth = p.DateOfBirth,
                     Gender = p.Gender,
+                    BloodGroup = p.BloodGroup,
                     MedicalRecordNumber = p.MedicalRecordNumber,
                     Diagnosis = p.Diagnosis,
                     Stage = p.Stage,

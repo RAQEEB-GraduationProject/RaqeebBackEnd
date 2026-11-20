@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 namespace RAQEEB.DTOs.Patients
 {
     public class UpdatePatientDto
@@ -17,5 +18,9 @@ namespace RAQEEB.DTOs.Patients
         public string? Protocol { get; set; }
 
         public string? RiskLevel { get; set; }
+
+        [RegularExpression(@"^(A|B|AB|O)[+-]$",
+            ErrorMessage = "Blood group must be one of: A+, A-, B+, B-, AB+, AB-, O+, O-.")]
+        public string? BloodGroup { get; set; }
     }
 }
