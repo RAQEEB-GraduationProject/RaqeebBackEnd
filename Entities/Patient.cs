@@ -28,6 +28,8 @@ namespace RAQEEB.Entities
 
         public string? Gender { get; set; }
 
+        public string? BloodGroup { get; set; }
+
         public string? MedicalRecordNumber { get; set; }
 
         // Medical Details

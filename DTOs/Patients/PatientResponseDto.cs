@@ -31,5 +31,7 @@ namespace RAQEEB.DTOs.Patients
         public bool IsActive { get; set; }
 
         public DateTime CreatedAt { get; set; }
+
+        public string? BloodGroup { get; set; }
     }
 }

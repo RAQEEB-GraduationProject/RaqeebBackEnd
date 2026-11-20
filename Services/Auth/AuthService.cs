@@ -182,7 +182,10 @@ namespace RAQEEB.Services.Auth
                 PhoneNumber = registerDto.PhoneNumber,
                 HospitalId = hospitalId,
                 IsActive = true,
-                EmailConfirmed = true
+                EmailConfirmed = true,
+                FullName = string.IsNullOrWhiteSpace(registerDto.FullName)
+                    ? null
+                    : registerDto.FullName.Trim(),
             };
 
             var result = await _userManager.CreateAsync(

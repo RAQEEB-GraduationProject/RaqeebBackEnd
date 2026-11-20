@@ -19,6 +19,9 @@ namespace RAQEEB.Data
         public DbSet<PatientAssignment> PatientAssignments
         => Set<PatientAssignment>();
 
+        public DbSet<PatientMedicalHistoryEntry> PatientMedicalHistoryEntries
+        => Set<PatientMedicalHistoryEntry>();
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -53,6 +56,9 @@ namespace RAQEEB.Data
 
                 entity.Property(u => u.CreatedAt)
                     .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.Property(u => u.FullName)
+                    .HasMaxLength(200);
             });
 
             builder.Entity<Patient>(entity =>
@@ -74,6 +80,9 @@ namespace RAQEEB.Data
 
                 entity.Property(p => p.Gender)
                     .HasMaxLength(30);
+
+                entity.Property(p => p.BloodGroup)
+                    .HasMaxLength(10);
 
                 entity.Property(p => p.MedicalRecordNumber)
                     .HasMaxLength(100);
@@ -137,6 +146,35 @@ namespace RAQEEB.Data
                 })
                 .IsUnique()
                 .HasFilter("[IsActive] = 1");
+            });
+
+            builder.Entity<PatientMedicalHistoryEntry>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Type)
+                    .HasConversion<string>()
+                    .HasMaxLength(30);
+
+                entity.Property(e => e.Name)
+                    .IsRequired()
+                    .HasMaxLength(200);
+
+                entity.Property(e => e.Notes)
+                    .HasMaxLength(1000);
+
+                entity.Property(e => e.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(e => e.Patient)
+                    .WithMany()
+                    .HasForeignKey(e => e.PatientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => new { e.PatientId, e.Type });
             });
         }
     }
