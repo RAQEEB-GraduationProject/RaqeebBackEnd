@@ -9,6 +9,7 @@ using RAQEEB.Data;
 using RAQEEB.DTOs.Common;
 using RAQEEB.Entities;
 using RAQEEB.Services.Auth;
+using RAQEEB.Services.Diagnostics;
 using RAQEEB.Services.Patients;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -61,6 +62,10 @@ builder.Services.AddScoped<IPatientAccessService, PatientAccessService>();
 builder.Services.AddScoped<IPatientOverviewService, PatientOverviewService>();
 
 builder.Services.AddScoped<IPatientMedicalHistoryService, PatientMedicalHistoryService>();
+
+builder.Services.AddSingleton<IDiagnosticFileStorage, DiagnosticFileStorage>();
+
+builder.Services.AddScoped<IPatientDiagnosticsService, PatientDiagnosticsService>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -124,7 +129,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost:5173")   
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .WithExposedHeaders("Content-Disposition");
     });
 });
 
@@ -148,6 +154,16 @@ using (var scope = app.Services.CreateScope())
         context,
         userManager,
         roleManager);
+
+    // Fake demo users, patients, labs, imaging and PDFs - Development only.
+    if (app.Environment.IsDevelopment())
+    {
+        await DbSeeder.SeedDevelopmentDataAsync(
+            context,
+            userManager,
+            services.GetRequiredService<IDiagnosticFileStorage>(),
+            builder.Configuration["DemoSeed:Password"] ?? "Demo@12345");
+    }
 }
 
 // Configure the HTTP request pipeline.
