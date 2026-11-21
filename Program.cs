@@ -67,6 +67,10 @@ builder.Services.AddSingleton<IDiagnosticFileStorage, DiagnosticFileStorage>();
 
 builder.Services.AddScoped<IPatientDiagnosticsService, PatientDiagnosticsService>();
 
+builder.Services.AddScoped<IPatientJournalService, PatientJournalService>();
+
+builder.Services.AddScoped<IPatientAppointmentsService, PatientAppointmentsService>();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;

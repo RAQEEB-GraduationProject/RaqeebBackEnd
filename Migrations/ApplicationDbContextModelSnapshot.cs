@@ -474,6 +474,59 @@ namespace RAQEEB.Migrations
                     b.ToTable("Patients");
                 });
 
+            modelBuilder.Entity("RAQEEB.Entities.PatientAppointment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("AppointmentDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly>("AppointmentTime")
+                        .HasColumnType("time");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("ProviderUserId");
+
+                    b.HasIndex("PatientId", "AppointmentDate", "AppointmentTime");
+
+                    b.ToTable("PatientAppointments");
+                });
+
             modelBuilder.Entity("RAQEEB.Entities.PatientAssignment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -506,6 +559,48 @@ namespace RAQEEB.Migrations
                         .HasFilter("[IsActive] = 1");
 
                     b.ToTable("PatientAssignments");
+                });
+
+            modelBuilder.Entity("RAQEEB.Entities.PatientJournalEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AuthorUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorUserId");
+
+                    b.HasIndex("PatientId", "CreatedAt");
+
+                    b.ToTable("PatientJournalEntries");
                 });
 
             modelBuilder.Entity("RAQEEB.Entities.PatientMedicalHistoryEntry", b =>
@@ -679,6 +774,33 @@ namespace RAQEEB.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("RAQEEB.Entities.PatientAppointment", b =>
+                {
+                    b.HasOne("RAQEEB.Entities.ApplicationUser", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RAQEEB.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RAQEEB.Entities.ApplicationUser", "Provider")
+                        .WithMany()
+                        .HasForeignKey("ProviderUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Patient");
+
+                    b.Navigation("Provider");
+                });
+
             modelBuilder.Entity("RAQEEB.Entities.PatientAssignment", b =>
                 {
                     b.HasOne("RAQEEB.Entities.Patient", "Patient")
@@ -696,6 +818,25 @@ namespace RAQEEB.Migrations
                     b.Navigation("Patient");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("RAQEEB.Entities.PatientJournalEntry", b =>
+                {
+                    b.HasOne("RAQEEB.Entities.ApplicationUser", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RAQEEB.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("RAQEEB.Entities.PatientMedicalHistoryEntry", b =>

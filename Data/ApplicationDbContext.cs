@@ -28,6 +28,12 @@ namespace RAQEEB.Data
 
         public DbSet<Imaging> ImagingRecords => Set<Imaging>();
 
+        public DbSet<PatientJournalEntry> PatientJournalEntries
+        => Set<PatientJournalEntry>();
+
+        public DbSet<PatientAppointment> PatientAppointments
+        => Set<PatientAppointment>();
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -182,6 +188,7 @@ namespace RAQEEB.Data
 
                 entity.HasIndex(e => new { e.PatientId, e.Type });
             });
+            
 
             builder.Entity<DiagnosticFile>(entity =>
             {
@@ -277,6 +284,77 @@ namespace RAQEEB.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(i => new { i.PatientId, i.StudyDate });
+            });
+
+            builder.Entity<PatientJournalEntry>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.EntryType)
+                    .HasConversion<string>()
+                    .HasMaxLength(30);
+
+                entity.Property(e => e.Content)
+                    .IsRequired()
+                    .HasMaxLength(2000);
+
+                entity.Property(e => e.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(e => e.Patient)
+                    .WithMany()
+                    .HasForeignKey(e => e.PatientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Author)
+                    .WithMany()
+                    .HasForeignKey(e => e.AuthorUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => new { e.PatientId, e.CreatedAt });
+            });
+
+            builder.Entity<PatientAppointment>(entity =>
+            {
+                entity.HasKey(a => a.Id);
+
+                entity.Property(a => a.Title)
+                    .IsRequired()
+                    .HasMaxLength(200);
+
+                entity.Property(a => a.Location)
+                    .HasMaxLength(300);
+
+                entity.Property(a => a.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(a => a.CreatedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(a => a.Patient)
+                    .WithMany()
+                    .HasForeignKey(a => a.PatientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(a => a.Provider)
+                    .WithMany()
+                    .HasForeignKey(a => a.ProviderUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(a => a.CreatedBy)
+                    .WithMany()
+                    .HasForeignKey(a => a.CreatedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(a => new
+                {
+                    a.PatientId,
+                    a.AppointmentDate,
+                    a.AppointmentTime
+                });
             });
         }
     }
