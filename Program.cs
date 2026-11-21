@@ -9,6 +9,7 @@ using RAQEEB.Data;
 using RAQEEB.DTOs.Common;
 using RAQEEB.Entities;
 using RAQEEB.Services.Auth;
+using RAQEEB.Services.Patients;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,6 +55,10 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+builder.Services.AddScoped<IPatientAccessService, PatientAccessService>();
+
+builder.Services.AddScoped<IPatientOverviewService, PatientOverviewService>();
 
 builder.Services.AddAuthentication(options =>
 {
