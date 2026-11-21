@@ -62,6 +62,10 @@ builder.Services.AddScoped<IPatientOverviewService, PatientOverviewService>();
 
 builder.Services.AddScoped<IPatientMedicalHistoryService, PatientMedicalHistoryService>();
 
+builder.Services.AddScoped<IPatientJournalService, PatientJournalService>();
+
+builder.Services.AddScoped<IPatientAppointmentsService, PatientAppointmentsService>();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
