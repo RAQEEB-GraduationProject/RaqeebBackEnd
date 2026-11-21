@@ -4,7 +4,7 @@ using RAQEEB.Entities;
 
 namespace RAQEEB.Data
 {
-    public static class DbSeeder
+    public static partial class DbSeeder
     {
         public static async Task SeedAsync(
             ApplicationDbContext context,

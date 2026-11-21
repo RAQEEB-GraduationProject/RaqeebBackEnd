@@ -30,3 +30,5 @@ publish/
 appsettings.Production.json
 
 RaqeebFrontEnd/
+# Private diagnostic documents (local storage)
+App_Data/
