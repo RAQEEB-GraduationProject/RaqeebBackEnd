@@ -22,6 +22,12 @@ namespace RAQEEB.Data
         public DbSet<PatientMedicalHistoryEntry> PatientMedicalHistoryEntries
         => Set<PatientMedicalHistoryEntry>();
 
+        public DbSet<DiagnosticFile> DiagnosticFiles => Set<DiagnosticFile>();
+
+        public DbSet<LabResult> LabResults => Set<LabResult>();
+
+        public DbSet<Imaging> ImagingRecords => Set<Imaging>();
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -175,6 +181,102 @@ namespace RAQEEB.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(e => new { e.PatientId, e.Type });
+            });
+
+            builder.Entity<DiagnosticFile>(entity =>
+            {
+                entity.HasKey(f => f.Id);
+
+                entity.Property(f => f.FileName)
+                    .IsRequired()
+                    .HasMaxLength(255);
+
+                entity.Property(f => f.ContentType)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.Property(f => f.StoredFileName)
+                    .IsRequired()
+                    .HasMaxLength(500);
+
+                entity.Property(f => f.CreatedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(f => f.Patient)
+                    .WithMany()
+                    .HasForeignKey(f => f.PatientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(f => f.PatientId);
+            });
+
+            builder.Entity<LabResult>(entity =>
+            {
+                entity.HasKey(l => l.Id);
+
+                entity.Property(l => l.TestName)
+                    .IsRequired()
+                    .HasMaxLength(200);
+
+                entity.Property(l => l.ResultValue)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                entity.Property(l => l.Unit)
+                    .HasMaxLength(50);
+
+                entity.Property(l => l.Flag)
+                    .HasMaxLength(20);
+
+                entity.Property(l => l.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(l => l.CreatedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(l => l.Patient)
+                    .WithMany()
+                    .HasForeignKey(l => l.PatientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(l => l.DiagnosticFile)
+                    .WithMany()
+                    .HasForeignKey(l => l.DiagnosticFileId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(l => new { l.PatientId, l.RecordedAt });
+            });
+
+            builder.Entity<Imaging>(entity =>
+            {
+                entity.ToTable("ImagingRecords");
+
+                entity.HasKey(i => i.Id);
+
+                entity.Property(i => i.StudyName)
+                    .IsRequired()
+                    .HasMaxLength(200);
+
+                entity.Property(i => i.Finding)
+                    .HasMaxLength(2000);
+
+                entity.Property(i => i.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(i => i.CreatedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(i => i.Patient)
+                    .WithMany()
+                    .HasForeignKey(i => i.PatientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(i => i.DiagnosticFile)
+                    .WithMany()
+                    .HasForeignKey(i => i.DiagnosticFileId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(i => new { i.PatientId, i.StudyDate });
             });
         }
     }

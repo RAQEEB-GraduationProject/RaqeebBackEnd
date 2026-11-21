@@ -239,6 +239,45 @@ namespace RAQEEB.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("RAQEEB.Entities.DiagnosticFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StoredFileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientId");
+
+                    b.ToTable("DiagnosticFiles");
+                });
+
             modelBuilder.Entity("RAQEEB.Entities.Hospital", b =>
                 {
                     b.Property<Guid>("Id")
@@ -268,6 +307,101 @@ namespace RAQEEB.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Hospitals");
+                });
+
+            modelBuilder.Entity("RAQEEB.Entities.Imaging", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid?>("DiagnosticFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Finding")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("StudyDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StudyName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DiagnosticFileId");
+
+                    b.HasIndex("PatientId", "StudyDate");
+
+                    b.ToTable("ImagingRecords", (string)null);
+                });
+
+            modelBuilder.Entity("RAQEEB.Entities.LabResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid?>("DiagnosticFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Flag")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResultValue")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TestName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DiagnosticFileId");
+
+                    b.HasIndex("PatientId", "RecordedAt");
+
+                    b.ToTable("LabResults");
                 });
 
             modelBuilder.Entity("RAQEEB.Entities.Patient", b =>
@@ -477,6 +611,53 @@ namespace RAQEEB.Migrations
                         .IsRequired();
 
                     b.Navigation("Hospital");
+                });
+
+            modelBuilder.Entity("RAQEEB.Entities.DiagnosticFile", b =>
+                {
+                    b.HasOne("RAQEEB.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("RAQEEB.Entities.Imaging", b =>
+                {
+                    b.HasOne("RAQEEB.Entities.DiagnosticFile", "DiagnosticFile")
+                        .WithMany()
+                        .HasForeignKey("DiagnosticFileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("RAQEEB.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DiagnosticFile");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("RAQEEB.Entities.LabResult", b =>
+                {
+                    b.HasOne("RAQEEB.Entities.DiagnosticFile", "DiagnosticFile")
+                        .WithMany()
+                        .HasForeignKey("DiagnosticFileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("RAQEEB.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DiagnosticFile");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("RAQEEB.Entities.Patient", b =>
