@@ -7,6 +7,7 @@ using RAQEEB.DTOs.Common;
 using RAQEEB.Data;
 using RAQEEB.DTOs.Patients;
 using RAQEEB.Entities;
+using RAQEEB.Services.Patients;
 
 namespace RAQEEB.Controllers
 {
@@ -18,15 +19,18 @@ namespace RAQEEB.Controllers
         private readonly ApplicationDbContext _context;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ICurrentUser _currentUser;
+        private readonly IPatientAccessService _patientAccess;
 
         public PatientsController(
             ApplicationDbContext context,
             UserManager<ApplicationUser> userManager,
-            ICurrentUser currentUser)
+            ICurrentUser currentUser,
+            IPatientAccessService patientAccess)
         {
             _context = context;
             _userManager = userManager;
             _currentUser = currentUser;
+            _patientAccess = patientAccess;
         }
 
         // POST: api/Patients
@@ -50,7 +54,7 @@ namespace RAQEEB.Controllers
                     "The specified user does not belong to your hospital."
                 )
             );
-            } //verify that user belongs to same hospital as admin or doctor 
+            } //verify that user belongs to same hospital as admin or doctor
 
             if (!await _userManager.IsInRoleAsync(user, "Patient"))
             {
@@ -75,15 +79,21 @@ namespace RAQEEB.Controllers
             );
             }
 
-            if (!string.IsNullOrWhiteSpace(dto.MedicalRecordNumber))
+            // Trim once and use the same value for the check and for saving
+            // (before: " MRN-1" passed the check, then crashed on the unique index).
+            var medicalRecordNumber = string.IsNullOrWhiteSpace(dto.MedicalRecordNumber)
+                ? null
+                : dto.MedicalRecordNumber.Trim();
+
+            if (medicalRecordNumber != null)
             {
                 var recordExists = await _context.Patients
                     .AnyAsync(p =>
                         p.HospitalId == hospitalId.Value && //The existing patient belongs to the same hospital.
-                        p.MedicalRecordNumber == dto.MedicalRecordNumber);//The existing patient's medical record number
+                        p.MedicalRecordNumber == medicalRecordNumber);//The existing patient's medical record number
                                                                           //matches the submitted number
-                                        
-                
+
+
                 //medical record numbers are being treated as unique within each hospital
                 if (recordExists)
                 {
@@ -104,10 +114,7 @@ namespace RAQEEB.Controllers
                 DateOfBirth = dto.DateOfBirth,
                 Gender = dto.Gender,
                 BloodGroup = dto.BloodGroup?.Trim(),
-                MedicalRecordNumber = string.IsNullOrWhiteSpace(
-                    dto.MedicalRecordNumber)
-                    ? null
-                    : dto.MedicalRecordNumber.Trim(),
+                MedicalRecordNumber = medicalRecordNumber,
                 Diagnosis = dto.Diagnosis,
                 Stage = dto.Stage,
                 Treatment = dto.Treatment,
@@ -121,25 +128,8 @@ namespace RAQEEB.Controllers
 
             await _context.SaveChangesAsync();
 
-            var result = new PatientResponseDto //for frontend to display the newly created patient profile
-            {
-                Id = patient.Id,
-                UserId = user.Id,
-                UserName = user.UserName ?? string.Empty,
-                Email = user.Email ?? string.Empty,
-                HospitalId = patient.HospitalId,
-                DateOfBirth = patient.DateOfBirth,
-                Gender = patient.Gender,
-                BloodGroup = patient.BloodGroup,
-                MedicalRecordNumber = patient.MedicalRecordNumber,
-                Diagnosis = patient.Diagnosis,
-                Stage = patient.Stage,
-                Treatment = patient.Treatment,
-                Protocol = patient.Protocol,
-                RiskLevel = patient.RiskLevel,
-                IsActive = patient.IsActive,
-                CreatedAt = patient.CreatedAt
-            };
+            // Read the new profile back with the shared mapping (same shape as GET).
+            var result = await GetPatientResponseAsync(patient.Id);
 
             return StatusCode(
                 StatusCodes.Status201Created,
@@ -151,57 +141,15 @@ namespace RAQEEB.Controllers
         }
 
         // GET: api/Patients
+        // Who sees what is decided in one place: IPatientAccessService.
         [HttpGet]
         public async Task<IActionResult> GetPatients()
         {
-            var hospitalId = _currentUser.HospitalId;
-            var userId = _currentUser.UserId;
-            var role = _currentUser.Role;
-
-            if (hospitalId == null || userId == null)
+            if (_currentUser.HospitalId == null || _currentUser.UserId == null)
                 return Forbid();
 
-            var query = _context.Patients
-                .AsNoTracking() //for read-only queries, improves performance by not tracking changes to the entities
-                .Where(p =>
-                    p.HospitalId == hospitalId.Value);
-
-            if (role != "Admin")
-            {
-                if (role == "Patient")
-                {
-                    query = query.Where(p => p.UserId == userId);
-                }
-                else //doctor, nurse, caregiver roles can view patients assigned to them
-                {
-                    query = query.Where(p =>
-                        _context.PatientAssignments.Any(a =>
-                            a.PatientId == p.Id &&
-                            a.UserId == userId &&
-                            a.IsActive));
-                }
-            }
-
-            var patients = await query
-                .Select(p => new PatientResponseDto //projection concept
-                {
-                    Id = p.Id,
-                    UserId = p.UserId,
-                    UserName = p.User.UserName ?? string.Empty,
-                    Email = p.User.Email ?? string.Empty,
-                    HospitalId = p.HospitalId,
-                    DateOfBirth = p.DateOfBirth,
-                    Gender = p.Gender,
-                    BloodGroup = p.BloodGroup,
-                    MedicalRecordNumber = p.MedicalRecordNumber,
-                    Diagnosis = p.Diagnosis,
-                    Stage = p.Stage,
-                    Treatment = p.Treatment,
-                    Protocol = p.Protocol,
-                    RiskLevel = p.RiskLevel,
-                    IsActive = p.IsActive,
-                    CreatedAt = p.CreatedAt
-                })
+            var patients = await _patientAccess.GetAccessiblePatients()
+                .Select(PatientResponseDto.Projection)
                 .ToListAsync();
 
             return Ok(
@@ -214,61 +162,18 @@ namespace RAQEEB.Controllers
             );
         }
 
-        
+
 
         // GET: api/Patients/{id}
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetPatientById(Guid id)
         {
-            var hospitalId = _currentUser.HospitalId;
-            var userId = _currentUser.UserId;
-            var role = _currentUser.Role;
-
-            if (hospitalId == null || userId == null)
+            if (_currentUser.HospitalId == null || _currentUser.UserId == null)
                 return Forbid();
 
-            var query = _context.Patients
-                .AsNoTracking()
-                .Where(p =>
-                    p.Id == id &&
-                    p.HospitalId == hospitalId.Value);
-
-            if (role != "Admin")
-            {
-                if (role == "Patient")
-                {
-                    query = query.Where(p => p.UserId == userId);
-                }
-                else
-                {
-                    query = query.Where(p =>
-                        _context.PatientAssignments.Any(a =>
-                            a.PatientId == p.Id &&
-                            a.UserId == userId &&
-                            a.IsActive));
-                }
-            }
-
-            var patient = await query
-                .Select(p => new PatientResponseDto
-                {
-                    Id = p.Id,
-                    UserId = p.UserId,
-                    UserName = p.User.UserName ?? string.Empty,
-                    Email = p.User.Email ?? string.Empty,
-                    HospitalId = p.HospitalId,
-                    DateOfBirth = p.DateOfBirth,
-                    Gender = p.Gender,
-                    BloodGroup = p.BloodGroup,
-                    MedicalRecordNumber = p.MedicalRecordNumber,
-                    Diagnosis = p.Diagnosis,
-                    Stage = p.Stage,
-                    Treatment = p.Treatment,
-                    Protocol = p.Protocol,
-                    RiskLevel = p.RiskLevel,
-                    IsActive = p.IsActive,
-                    CreatedAt = p.CreatedAt
-                })
+            var patient = await _patientAccess.GetAccessiblePatients()
+                .Where(p => p.Id == id)
+                .Select(PatientResponseDto.Projection)
                 .FirstOrDefaultAsync();
 
             if (patient == null)
@@ -353,29 +258,7 @@ namespace RAQEEB.Controllers
 
             await _context.SaveChangesAsync();
 
-            var result = await _context.Patients
-                .AsNoTracking()
-                .Where(p => p.Id == id)
-                .Select(p => new PatientResponseDto
-                {
-                    Id = p.Id,
-                    UserId = p.UserId,
-                    UserName = p.User.UserName ?? string.Empty,
-                    Email = p.User.Email ?? string.Empty,
-                    HospitalId = p.HospitalId,
-                    DateOfBirth = p.DateOfBirth,
-                    Gender = p.Gender,
-                    BloodGroup = p.BloodGroup,
-                    MedicalRecordNumber = p.MedicalRecordNumber,
-                    Diagnosis = p.Diagnosis,
-                    Stage = p.Stage,
-                    Treatment = p.Treatment,
-                    Protocol = p.Protocol,
-                    RiskLevel = p.RiskLevel,
-                    IsActive = p.IsActive,
-                    CreatedAt = p.CreatedAt
-                })
-                .FirstAsync();
+            var result = await GetPatientResponseAsync(id);
 
             return Ok(
                 ApiResponse<PatientResponseDto>.SuccessResponse(
@@ -386,7 +269,6 @@ namespace RAQEEB.Controllers
         }
 
 
-        //delete a patient profile (soft delete)
         // Delete a patient profile (soft delete)
         [HttpDelete("{id:guid}")]
         [Authorize(Roles = "Admin")]
@@ -443,7 +325,6 @@ namespace RAQEEB.Controllers
         }
 
 
-        //ReActivate a patient profile
         // Reactivate a patient profile
         [HttpPatch("{id:guid}/reactivate")]
         [Authorize(Roles = "Admin")]
@@ -486,6 +367,14 @@ namespace RAQEEB.Controllers
             return NoContent();
         }
 
-
+        // Loads one patient with the shared mapping (used after create / update).
+        private Task<PatientResponseDto> GetPatientResponseAsync(Guid id)
+        {
+            return _context.Patients
+                .AsNoTracking()
+                .Where(p => p.Id == id)
+                .Select(PatientResponseDto.Projection)
+                .FirstAsync();
+        }
     }
 }

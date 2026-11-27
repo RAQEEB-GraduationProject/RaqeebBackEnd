@@ -29,18 +29,68 @@ namespace RAQEEB.Controllers
             var result =
                 await _authService.LoginAsync(loginDto);
 
-            if (result == null)
+            if (result.Status == LoginStatus.LockedOut)
             {
-                return Unauthorized(new
-                {
-                    message = "Invalid username or password"
-                });
+                return StatusCode(
+                    StatusCodes.Status429TooManyRequests,
+                    ApiResponse<LoginResponseDto>.FailureResponse(
+                        "ACCOUNT_LOCKED",
+                        "Too many failed login attempts. Try again in 5 minutes."
+                    )
+                );
+            }
+
+            if (result.Status != LoginStatus.Success)
+            {
+                // Same ApiResponse shape as every other endpoint
+                // (it still has a "message" field, like before).
+                return Unauthorized(
+                    ApiResponse<LoginResponseDto>.FailureResponse(
+                        "INVALID_CREDENTIALS",
+                        "Invalid username or password."
+                    )
+                );
             }
 
             return Ok(
-                ApiResponse<object>.SuccessResponse( // object is used here because the response type is not specified in the ApiResponse class
-                    result,
+                ApiResponse<LoginResponseDto>.SuccessResponse(
+                    result.Data!,
                     "Login successful."
+                )
+            );
+        }
+
+        // Any logged-in user can change their own password.
+        // POST: api/Auth/change-password
+        [Authorize]
+        [HttpPost("change-password")]
+        public async Task<IActionResult> ChangePassword(
+            [FromBody] ChangePasswordDto dto)
+        {
+            var userId = _currentUser.UserId;
+
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var errors = await _authService.ChangePasswordAsync(userId, dto);
+
+            if (errors.Count > 0)
+            {
+                return BadRequest(
+                    ApiResponse<object>.FailureResponse(
+                        "CHANGE_PASSWORD_FAILED",
+                        "The password could not be changed.",
+                        errors
+                    )
+                );
+            }
+
+            return Ok(
+                ApiResponse<object>.SuccessResponse(
+                    new { },
+                    "Password changed successfully."
                 )
             );
         }
@@ -58,7 +108,7 @@ namespace RAQEEB.Controllers
             if (!_currentUser.HospitalId.HasValue)
             {
                 return BadRequest(
-                    ApiResponse<object>.FailureResponse(
+                    ApiResponse<RegisterResponseDto>.FailureResponse(
                         "HOSPITAL_NOT_ASSIGNED",
                         "Current user is not assigned to a hospital."
                     )
@@ -69,22 +119,44 @@ namespace RAQEEB.Controllers
                 registerDto,
                 _currentUser.HospitalId.Value);
 
-            if (result == null)
+            return result.Status switch
             {
-                return BadRequest(
+                RegisterStatus.Success => Ok(
+                    ApiResponse<RegisterResponseDto>.SuccessResponse(
+                        result.Data!,
+                        "User registered successfully.")),
+
+                RegisterStatus.UserNameTaken => Conflict(
+                    ApiResponse<RegisterResponseDto>.FailureResponse(
+                        "USERNAME_TAKEN",
+                        "This username is already taken.",
+                        result.Errors)),
+
+                RegisterStatus.EmailTaken => Conflict(
+                    ApiResponse<RegisterResponseDto>.FailureResponse(
+                        "EMAIL_TAKEN",
+                        "This email is already registered.",
+                        result.Errors)),
+
+                RegisterStatus.InvalidRole => BadRequest(
+                    ApiResponse<RegisterResponseDto>.FailureResponse(
+                        "INVALID_ROLE",
+                        "The selected role is not allowed.",
+                        result.Errors)),
+
+                RegisterStatus.InvalidData => BadRequest(
+                    ApiResponse<RegisterResponseDto>.FailureResponse(
+                        "VALIDATION_ERROR",
+                        "One or more validation errors occurred.",
+                        result.Errors)),
+
+                _ => StatusCode(
+                    StatusCodes.Status500InternalServerError,
                     ApiResponse<RegisterResponseDto>.FailureResponse(
                         "REGISTRATION_FAILED",
-                        "User registration failed."
-                    )
-                );
-            }
-
-            return Ok(
-                ApiResponse<RegisterResponseDto>.SuccessResponse(
-                    result,
-                    "User registered successfully."
-                )
-            );
+                        "User registration failed.",
+                        result.Errors))
+            };
         }
     }
 }

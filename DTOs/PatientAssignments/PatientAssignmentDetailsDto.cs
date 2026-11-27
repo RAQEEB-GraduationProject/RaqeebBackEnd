@@ -8,9 +8,15 @@
 
         public string PatientUserName { get; set; } = string.Empty;
 
+        // Full name (falls back to the username when empty).
+        public string PatientName { get; set; } = string.Empty;
+
         public string UserId { get; set; } = string.Empty;
 
         public string AssignedUserName { get; set; } = string.Empty;
+
+        // Full name (falls back to the username when empty).
+        public string AssignedName { get; set; } = string.Empty;
 
         public DateTime AssignedAt { get; set; }
 

@@ -6,8 +6,8 @@ using RAQEEB.Common;
 using RAQEEB.Data;
 using RAQEEB.DTOs.Common;
 using RAQEEB.DTOs.PatientAssignments;
-using RAQEEB.DTOs.Patients;
 using RAQEEB.Entities;
+using RAQEEB.Services.Patients;
 
 namespace RAQEEB.Controllers
 {
@@ -19,15 +19,18 @@ namespace RAQEEB.Controllers
         private readonly ApplicationDbContext _context;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ICurrentUser _currentUser;
+        private readonly IPatientAccessService _patientAccess;
 
         public PatientAssignmentsController(
             ApplicationDbContext context,
             UserManager<ApplicationUser> userManager,
-            ICurrentUser currentUser)
+            ICurrentUser currentUser,
+            IPatientAccessService patientAccess)
         {
             _context = context;
             _userManager = userManager;
             _currentUser = currentUser;
+            _patientAccess = patientAccess;
         }
 
         [HttpPost]
@@ -146,99 +149,35 @@ namespace RAQEEB.Controllers
 
         }
 
-        //[HttpGet]
-        //public async Task<IActionResult> GetAssignments()
-        //{
-        //    var hospitalId = _currentUser.HospitalId;
-        //    var userId = _currentUser.UserId;
-        //    var role = _currentUser.Role;
-
-        //    if (hospitalId == null || userId == null)
-        //        return Forbid();
-
-        //    var query = _context.PatientAssignments
-        //        .AsNoTracking()
-        //        .Where(a => a.Patient.HospitalId == hospitalId.Value);
-
-        //    if (role != "Admin")
-        //    {
-        //        query = query.Where(a => a.UserId == userId); //doctors see only their patients
-        //    }
-
-        //    var assignments = await query
-        //        .Select(a => new
-        //        {
-        //            a.Id,
-        //            a.PatientId,
-        //            PatientUserName = a.Patient.User.UserName ?? string.Empty,
-        //            a.UserId,
-        //            AssignedUserName = a.User.UserName ?? string.Empty,
-        //            a.AssignedAt,
-        //            a.IsActive
-        //        })
-        //        .ToListAsync();
-
-        //    return Ok(assignments);
-        //}
-
-        // GET: api/Patients/assignments
+        // GET: api/PatientAssignments/Assignments
         [HttpGet("Assignments")]
         public async Task<IActionResult> GetPatientsOverview()
         {
             var hospitalId = _currentUser.HospitalId;
             var userId = _currentUser.UserId;
-            var role = _currentUser.Role;
 
             if (hospitalId == null || userId == null)
             {
                 return StatusCode(
                     StatusCodes.Status403Forbidden,
-                    ApiResponse<List<PatientOverviewDto>>.FailureResponse(
+                    ApiResponse<List<PatientStaffOverviewDto>>.FailureResponse(
                         "FORBIDDEN",
                         "You are not authorized to access this resource."
                     )
                 );
             }
 
-            // Get active patients in the current hospital
-            var query = _context.Patients
-                .AsNoTracking()
-                .Where(p =>
-                    p.HospitalId == hospitalId.Value &&
-                    p.IsActive);
-
-            // Apply access rules based on the current user's role
-            if (role != "Admin")
-            {
-                if (role == "Patient")
-                {
-                    // A patient can see their own record
-                    query = query.Where(p => p.UserId == userId);
-                }
-                else
-                {
-                    // Other roles can see patients assigned to them
-                    query = query.Where(p =>
-                        _context.PatientAssignments.Any(a =>
-                            a.PatientId == p.Id &&
-                            a.UserId == userId &&
-                            a.IsActive));
-                }
-            }
+            // Active patients the current user may see (rules live in IPatientAccessService).
+            var query = _patientAccess.GetAccessiblePatients()
+                .Where(p => p.IsActive);
 
             // Get the basic patient information
             var patients = await query
-                .Select(p => new PatientOverviewDto
+                .Select(p => new PatientStaffOverviewDto
                 {
                     PatientId = p.Id,
-                    PatientName = p.User.UserName ?? string.Empty,
-                    PatientCode = p.MedicalRecordNumber,
-                    //Diagnosis = p.Diagnosis,
-                    //Stage = p.Stage,
-                    //Treatment = p.Treatment,
-                    //Protocol = p.Protocol,
-                    //RiskLevel = p.RiskLevel,
-                    //Status = p.IsActive ? "Active" : "Inactive"
+                    PatientName = p.User.FullName ?? p.User.UserName ?? string.Empty,
+                    PatientCode = p.MedicalRecordNumber
                 })
                 .ToListAsync();
 
@@ -246,7 +185,7 @@ namespace RAQEEB.Controllers
             if (patients.Count == 0)
             {
                 return Ok(
-                    ApiResponse<List<PatientOverviewDto>>.SuccessResponse(
+                    ApiResponse<List<PatientStaffOverviewDto>>.SuccessResponse(
                         patients,
                         "No patients found"
                     )
@@ -277,10 +216,10 @@ namespace RAQEEB.Controllers
                     )
                 select new
                 {
-                    AssignmentId = a.Id, //new
+                    AssignmentId = a.Id,
                     a.PatientId,
                     UserId = u.Id,
-                    Name = u.UserName ?? string.Empty,
+                    Name = u.FullName ?? u.UserName ?? string.Empty,
                     RoleName = r.Name
                 }
             ).ToListAsync();
@@ -301,7 +240,7 @@ namespace RAQEEB.Controllers
 
                 var staff = new AssignedStaffDto
                 {
-                    AssignmentId = assignment.AssignmentId,//new
+                    AssignmentId = assignment.AssignmentId,
                     UserId = assignment.UserId,
                     Name = assignment.Name
                 };
@@ -323,11 +262,11 @@ namespace RAQEEB.Controllers
             }
 
             return Ok(
-                ApiResponse<List<PatientOverviewDto>>.SuccessResponse(
+                ApiResponse<List<PatientStaffOverviewDto>>.SuccessResponse(
                 patients,
                 "Patients retrieved successfully"
                 )
-);
+            );
         }
 
 
@@ -366,8 +305,10 @@ namespace RAQEEB.Controllers
                     Id = a.Id,
                     PatientId = a.PatientId,
                     PatientUserName = a.Patient.User.UserName ?? string.Empty,
+                    PatientName = a.Patient.User.FullName ?? a.Patient.User.UserName ?? string.Empty,
                     UserId = a.UserId,
                     AssignedUserName = a.User.UserName ?? string.Empty,
+                    AssignedName = a.User.FullName ?? a.User.UserName ?? string.Empty,
                     AssignedAt = a.AssignedAt,
                     IsActive = a.IsActive
                 })

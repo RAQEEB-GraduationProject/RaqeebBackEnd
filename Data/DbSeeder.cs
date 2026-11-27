@@ -9,7 +9,8 @@ namespace RAQEEB.Data
         public static async Task SeedAsync(
             ApplicationDbContext context,
             UserManager<ApplicationUser> userManager,
-            RoleManager<IdentityRole> roleManager)
+            RoleManager<IdentityRole> roleManager,
+            string? adminPassword)
         {
             // 1. Seed roles
             string[] roles =
@@ -57,6 +58,15 @@ namespace RAQEEB.Data
 
             if (admin == null)
             {
+                // The password is no longer written in the code (the code is on GitHub).
+                if (string.IsNullOrWhiteSpace(adminPassword))
+                {
+                    throw new InvalidOperationException(
+                        "No admin account exists yet. Set \"AdminSeed:Password\" in " +
+                        "appsettings.Development.json (or the AdminSeed__Password " +
+                        "environment variable) so the first admin can be created.");
+                }
+
                 admin = new ApplicationUser
                 {
                     UserName = "admin",
@@ -69,7 +79,7 @@ namespace RAQEEB.Data
 
                 var result = await userManager.CreateAsync(
                     admin,
-                    "Admin@12345"
+                    adminPassword
                 );
 
                 if (!result.Succeeded)

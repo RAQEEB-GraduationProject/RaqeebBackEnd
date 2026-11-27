@@ -1,5 +1,4 @@
-﻿using System.Data;
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
@@ -7,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using RAQEEB.Data;
 using RAQEEB.DTOs.Auth;
+using RAQEEB.DTOs.Common;
 using RAQEEB.Entities;
 
 namespace RAQEEB.Services.Auth
@@ -14,20 +14,23 @@ namespace RAQEEB.Services.Auth
     public class AuthService : IAuthService
     {
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _context;
 
         public AuthService(
             UserManager<ApplicationUser> userManager,
+            SignInManager<ApplicationUser> signInManager,
             IConfiguration configuration,
             ApplicationDbContext context)
         {
             _userManager = userManager;
+            _signInManager = signInManager;
             _configuration = configuration;
             _context = context;
         }
 
-        public async Task<LoginResponseDto?> LoginAsync(
+        public async Task<LoginResult> LoginAsync(
             LoginDto loginDto)
         {
             var user = await _userManager
@@ -35,22 +38,30 @@ namespace RAQEEB.Services.Auth
 
             if (user == null)
             {
-                return null;
+                return LoginResult.Failed(LoginStatus.InvalidCredentials);
             }
 
             if (!user.IsActive)
             {
-                return null;
+                return LoginResult.Failed(LoginStatus.InvalidCredentials);
             }
 
-            var passwordValid =
-                await _userManager.CheckPasswordAsync(
-                    user,
-                    loginDto.Password);
+            // Checks the password AND counts wrong attempts:
+            // after 5 wrong passwords the account is locked for 5 minutes
+            // (settings in Program.cs). A correct password resets the counter.
+            var signInResult = await _signInManager.CheckPasswordSignInAsync(
+                user,
+                loginDto.Password,
+                lockoutOnFailure: true);
 
-            if (!passwordValid)
+            if (signInResult.IsLockedOut)
             {
-                return null;
+                return LoginResult.Failed(LoginStatus.LockedOut);
+            }
+
+            if (!signInResult.Succeeded)
+            {
+                return LoginResult.Failed(LoginStatus.InvalidCredentials);
             }
 
             var roles =
@@ -119,24 +130,23 @@ namespace RAQEEB.Services.Auth
                 new JwtSecurityTokenHandler()
                     .WriteToken(token);
 
-            return new LoginResponseDto
+            return LoginResult.Succeeded(new LoginResponseDto
             {
                 Token = tokenString,
                 Expiration = expiration,
                 UserId = user.Id,
                 UserName = user.UserName!,
-                Email = user.Email! ?? String.Empty,
+                Email = user.Email ?? string.Empty,
                 PhoneNumber = user.PhoneNumber,
                 HospitalId = user.HospitalId,
                 Roles = roles.ToList(),
                 PatientId = patientId
-
-            };
+            });
         }
 
-        public async Task<RegisterResponseDto?> RegisterAsync(
-                    RegisterDto registerDto,
-                    Guid hospitalId)
+        public async Task<RegisterResult> RegisterAsync(
+            RegisterDto registerDto,
+            Guid hospitalId)
         {
             // 1. Check whether the username already exists.
             var existingUser = await _userManager
@@ -144,7 +154,12 @@ namespace RAQEEB.Services.Auth
 
             if (existingUser != null)
             {
-                return null;
+                return RegisterResult.Failed(
+                    RegisterStatus.UserNameTaken,
+                    new List<ApiError>
+                    {
+                        new() { Field = "UserName", Message = "This username is already taken." }
+                    });
             }
 
             // 2. Check whether the email already exists.
@@ -153,21 +168,30 @@ namespace RAQEEB.Services.Auth
 
             if (existingEmail != null)
             {
-                return null;
+                return RegisterResult.Failed(
+                    RegisterStatus.EmailTaken,
+                    new List<ApiError>
+                    {
+                        new() { Field = "Email", Message = "This email is already registered." }
+                    });
             }
 
-            // 3. Validate the selected role.
-            var allowedRoles = new[]
-            {
-        "Doctor",
-        "Nurse",
-        "Caregiver",
-        "Patient"
-    };
+            // 3. Validate the selected role ("doctor" and "Doctor" both work).
+            var role = AllowedRegisterRoles.FirstOrDefault(r =>
+                string.Equals(r, registerDto.Role?.Trim(), StringComparison.OrdinalIgnoreCase));
 
-            if (!allowedRoles.Contains(registerDto.Role))
+            if (role == null)
             {
-                return null;
+                return RegisterResult.Failed(
+                    RegisterStatus.InvalidRole,
+                    new List<ApiError>
+                    {
+                        new()
+                        {
+                            Field = "Role",
+                            Message = $"Role must be one of: {string.Join(", ", AllowedRegisterRoles)}."
+                        }
+                    });
             }
 
             // 4. Begin a database transaction.
@@ -177,8 +201,8 @@ namespace RAQEEB.Services.Auth
             // 5. Create the Identity account.
             var user = new ApplicationUser
             {
-                UserName = registerDto.UserName,
-                Email = registerDto.Email,
+                UserName = registerDto.UserName.Trim(),
+                Email = registerDto.Email.Trim(),
                 PhoneNumber = registerDto.PhoneNumber,
                 HospitalId = hospitalId,
                 IsActive = true,
@@ -195,31 +219,89 @@ namespace RAQEEB.Services.Auth
             if (!result.Succeeded)
             {
                 await transaction.RollbackAsync();
-                return null;
+
+                // e.g. "Passwords must have at least one digit ('0'-'9')."
+                return RegisterResult.Failed(
+                    RegisterStatus.InvalidData,
+                    ToApiErrors(result));
             }
 
             // 6. Assign the selected role.
             var roleResult = await _userManager.AddToRoleAsync(
                 user,
-                registerDto.Role);
+                role);
 
             if (!roleResult.Succeeded)
             {
                 await transaction.RollbackAsync();
-                return null;
+
+                return RegisterResult.Failed(
+                    RegisterStatus.RoleAssignmentFailed,
+                    ToApiErrors(roleResult));
             }
 
             // 7. Commit the transaction.
             await transaction.CommitAsync();
 
             // 8. Return the newly created account information.
-            return new RegisterResponseDto
+            return RegisterResult.Succeeded(new RegisterResponseDto
             {
                 UserId = user.Id,
                 UserName = user.UserName ?? string.Empty,
                 Email = user.Email ?? string.Empty,
-                Role = registerDto.Role
-            };
+                Role = role
+            });
+        }
+
+        public async Task<List<ApiError>> ChangePasswordAsync(
+            string userId,
+            ChangePasswordDto dto)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+
+            if (user == null || !user.IsActive)
+            {
+                return new List<ApiError>
+                {
+                    new() { Field = string.Empty, Message = "Account not found." }
+                };
+            }
+
+            // Identity checks the current password and the password rules.
+            var result = await _userManager.ChangePasswordAsync(
+                user,
+                dto.CurrentPassword,
+                dto.NewPassword);
+
+            return result.Succeeded
+                ? new List<ApiError>()
+                : ToApiErrors(result);
+        }
+
+        // Roles an Admin can create (Admins are not created through this endpoint).
+        private static readonly string[] AllowedRegisterRoles =
+        {
+            "Doctor",
+            "Nurse",
+            "Caregiver",
+            "Patient"
+        };
+
+        // Turns Identity errors into the API's error format,
+        // guessing the field from the Identity error code.
+        private static List<ApiError> ToApiErrors(IdentityResult result)
+        {
+            return result.Errors
+                .Select(e => new ApiError
+                {
+                    Field = e.Code.Contains("Password") ? "Password"
+                        : e.Code.Contains("Email") ? "Email"
+                        : e.Code.Contains("UserName") ? "UserName"
+                        : e.Code.Contains("Role") ? "Role"
+                        : string.Empty,
+                    Message = e.Description
+                })
+                .ToList();
         }
     }
 }

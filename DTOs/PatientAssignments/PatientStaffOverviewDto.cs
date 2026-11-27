@@ -1,8 +1,10 @@
-namespace RAQEEB.DTOs.Patients
+﻿namespace RAQEEB.DTOs.PatientAssignments
 {
-
-    // THIS IS PATIENT ASSIGNMENT STUFF DTO, NOT PATIENT DTO. IT IS USED TO RETURN ASSIGNED STAFF FOR A PATIENT.
-    public class PatientOverviewDto
+    // Item of: GET /api/PatientAssignments/Assignments
+    // One patient with the staff currently assigned to them.
+    // (Was DTOs/Patients/PatientOverviewDto - renamed so it is not confused
+    //  with the patient details overview in DTOs/PatientDetails.)
+    public class PatientStaffOverviewDto
     {
         public Guid PatientId { get; set; }
 

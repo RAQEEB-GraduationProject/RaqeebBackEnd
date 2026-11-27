@@ -1,6 +1,38 @@
 @RAQEEB_HostAddress = http://localhost:5150
 
-GET {{RAQEEB_HostAddress}}/weatherforecast/
-Accept: application/json
+# 1. Log in, then paste the "token" from the response below.
+POST {{RAQEEB_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "userName": "admin",
+  "password": "<your password>"
+}
+
+###
+
+@token = <paste token here>
+
+# 2. Who am I?
+GET {{RAQEEB_HostAddress}}/api/Users/me
+Authorization: Bearer {{token}}
+
+###
+
+# 3. Patients I can see
+GET {{RAQEEB_HostAddress}}/api/Patients
+Authorization: Bearer {{token}}
+
+###
+
+# 4. Patients with their assigned staff
+GET {{RAQEEB_HostAddress}}/api/PatientAssignments/Assignments
+Authorization: Bearer {{token}}
+
+###
+
+# 5. Users in my hospital (Admin only), optional ?role=Doctor
+GET {{RAQEEB_HostAddress}}/api/Users?role=Doctor
+Authorization: Bearer {{token}}
 
 ###

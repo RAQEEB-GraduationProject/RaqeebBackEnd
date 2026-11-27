@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -44,12 +45,44 @@ builder.Services.AddControllers()
         };
     });
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Secrets are NOT stored in appsettings.json (it is pushed to GitHub).
+// Development: put them in appsettings.Development.json (git-ignored).
+// Server:      use environment variables ConnectionStrings__DefaultConnection and Jwt__Key.
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection is not set. " +
+        "Add it to appsettings.Development.json (git-ignored) or the " +
+        "ConnectionStrings__DefaultConnection environment variable.");
+}
 
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:Key is missing or shorter than 32 characters. " +
+        "Add a long random key to appsettings.Development.json (git-ignored) " +
+        "or the Jwt__Key environment variable.");
+}
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+    {
+        // Lock an account for 5 minutes after 5 wrong passwords in a row
+        // (stops password-guessing attacks on the login endpoint).
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+        options.Lockout.AllowedForNewUsers = true;
+    })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
+
+// Any unhandled exception -> ApiResponse JSON (409 for duplicate values, 500 otherwise).
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 builder.Services.AddHttpContextAccessor();
 
@@ -89,8 +122,31 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = builder.Configuration["Jwt:Audience"],
 
         IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)
+            Encoding.UTF8.GetBytes(jwtKey)
         )
+    };
+
+    // A token stays valid for 2 hours, so check on EVERY request that the
+    // account still exists and is still active. A deactivated user is
+    // blocked immediately instead of when their token expires.
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userId = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            var db = context.HttpContext.RequestServices
+                .GetRequiredService<ApplicationDbContext>();
+
+            var isActive = userId != null && await db.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Id == userId && u.IsActive);
+
+            if (!isActive)
+            {
+                context.Fail("This account is inactive or no longer exists.");
+            }
+        }
     };
 });
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -126,12 +182,23 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// add cors to allow requests from the frontend 
+// add cors to allow requests from the frontend
+// Allowed frontend URLs come from "Cors:AllowedOrigins" in appsettings.json
+// (add your deployed frontend URL there when you deploy).
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>();
+
+if (allowedOrigins == null || allowedOrigins.Length == 0)
+{
+    allowedOrigins = new[] { "http://localhost:5173" };
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")   
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .WithExposedHeaders("Content-Disposition");
@@ -154,10 +221,13 @@ using (var scope = app.Services.CreateScope())
     var roleManager = services
         .GetRequiredService<RoleManager<IdentityRole>>();
 
+    // The first admin's password comes from configuration ("AdminSeed:Password"),
+    // never from the source code. Only needed when no admin exists yet.
     await DbSeeder.SeedAsync(
         context,
         userManager,
-        roleManager);
+        roleManager,
+        builder.Configuration["AdminSeed:Password"]);
 
     // Fake demo users, patients, labs, imaging and PDFs - Development only.
     if (app.Environment.IsDevelopment())
@@ -171,6 +241,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     // app.MapOpenApi();
