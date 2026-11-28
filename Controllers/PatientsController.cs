@@ -56,6 +56,17 @@ namespace RAQEEB.Controllers
             );
             } //verify that user belongs to same hospital as admin or doctor
 
+            // A profile can only be created for an active login account.
+            if (!user.IsActive)
+            {
+                return BadRequest(
+                ApiResponse<PatientResponseDto>.FailureResponse(
+                    "USER_INACTIVE",
+                    "The specified user account is inactive. Activate it before creating a patient profile."
+                )
+            );
+            }
+
             if (!await _userManager.IsInRoleAsync(user, "Patient"))
             {
                 return BadRequest(
@@ -81,9 +92,7 @@ namespace RAQEEB.Controllers
 
             // Trim once and use the same value for the check and for saving
             // (before: " MRN-1" passed the check, then crashed on the unique index).
-            var medicalRecordNumber = string.IsNullOrWhiteSpace(dto.MedicalRecordNumber)
-                ? null
-                : dto.MedicalRecordNumber.Trim();
+            var medicalRecordNumber = Clean(dto.MedicalRecordNumber);
 
             if (medicalRecordNumber != null)
             {
@@ -111,15 +120,15 @@ namespace RAQEEB.Controllers
             {
                 UserId = user.Id,
                 HospitalId = hospitalId.Value,
-                DateOfBirth = dto.DateOfBirth,
-                Gender = dto.Gender,
-                BloodGroup = dto.BloodGroup?.Trim(),
-                MedicalRecordNumber = medicalRecordNumber,
-                Diagnosis = dto.Diagnosis,
-                Stage = dto.Stage,
-                Treatment = dto.Treatment,
-                Protocol = dto.Protocol,
-                RiskLevel = dto.RiskLevel,
+                DateOfBirth = dto.DateOfBirth?.Date,
+                Gender = Clean(dto.Gender),
+                BloodGroup = Clean(dto.BloodGroup)?.ToUpperInvariant(),
+                MedicalRecordNumber = medicalRecordNumber, // null when not sent
+                Diagnosis = Clean(dto.Diagnosis),
+                Stage = Clean(dto.Stage),
+                Treatment = Clean(dto.Treatment),
+                Protocol = Clean(dto.Protocol),
+                RiskLevel = Clean(dto.RiskLevel),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -131,8 +140,10 @@ namespace RAQEEB.Controllers
             // Read the new profile back with the shared mapping (same shape as GET).
             var result = await GetPatientResponseAsync(patient.Id);
 
-            return StatusCode(
-                StatusCodes.Status201Created,
+            // 201 + "Location: /api/Patients/{id}" header.
+            return CreatedAtAction(
+                nameof(GetPatientById),
+                new { id = patient.Id },
                 ApiResponse<PatientResponseDto>.SuccessResponse(
                     result,
                     "Patient created successfully."
@@ -220,10 +231,12 @@ namespace RAQEEB.Controllers
                 );
             }
 
-            if (!string.IsNullOrWhiteSpace(dto.MedicalRecordNumber))
-            {
-                var recordNumber = dto.MedicalRecordNumber.Trim();
+            // Full replacement: every property is present (enforced by [JsonRequired]).
+            // Text is trimmed and "" / "   " is treated as null (= clear the value).
+            var recordNumber = Clean(dto.MedicalRecordNumber);
 
+            if (recordNumber != null)
+            {
                 var recordExists = await _context.Patients.AnyAsync(p =>
                     p.HospitalId == hospitalId.Value &&
                     p.Id != id &&
@@ -231,7 +244,6 @@ namespace RAQEEB.Controllers
 
                 if (recordExists)
                 {
-
                     return Conflict(
                     ApiResponse<PatientResponseDto>.FailureResponse(
                         "MRN_ALREADY_EXISTS",
@@ -239,22 +251,17 @@ namespace RAQEEB.Controllers
                     )
                 );
                 }
-
-                patient.MedicalRecordNumber = recordNumber;
-            }
-            else
-            {
-                patient.MedicalRecordNumber = null;
             }
 
-            patient.DateOfBirth = dto.DateOfBirth;
-            patient.Gender = dto.Gender;
-            patient.BloodGroup = dto.BloodGroup?.Trim();
-            patient.Diagnosis = dto.Diagnosis;
-            patient.Stage = dto.Stage;
-            patient.Treatment = dto.Treatment;
-            patient.Protocol = dto.Protocol;
-            patient.RiskLevel = dto.RiskLevel;
+            patient.MedicalRecordNumber = recordNumber;
+            patient.DateOfBirth = dto.DateOfBirth?.Date;
+            patient.Gender = Clean(dto.Gender);
+            patient.BloodGroup = Clean(dto.BloodGroup)?.ToUpperInvariant();
+            patient.Diagnosis = Clean(dto.Diagnosis);
+            patient.Stage = Clean(dto.Stage);
+            patient.Treatment = Clean(dto.Treatment);
+            patient.Protocol = Clean(dto.Protocol);
+            patient.RiskLevel = Clean(dto.RiskLevel);
 
             await _context.SaveChangesAsync();
 
@@ -365,6 +372,12 @@ namespace RAQEEB.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        // Trims text; "" and whitespace become null (same rule for create and update).
+        private static string? Clean(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
 
         // Loads one patient with the shared mapping (used after create / update).

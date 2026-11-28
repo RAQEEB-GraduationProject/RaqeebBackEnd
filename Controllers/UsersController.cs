@@ -66,9 +66,9 @@ namespace RAQEEB.Controllers
                 {
                     Id = u.Id,
                     UserName = u.UserName ?? string.Empty,
-                    FullName = u.FullName ?? u.UserName ?? string.Empty,
-                    Email = u.Email ?? string.Empty,
-                    PhoneNumber = u.PhoneNumber ?? string.Empty,
+                    FullName = u.FullName == null || u.FullName.Trim() == "" ? null : u.FullName,
+                    Email = u.Email == null || u.Email.Trim() == "" ? null : u.Email,
+                    PhoneNumber = u.PhoneNumber == null || u.PhoneNumber.Trim() == "" ? null : u.PhoneNumber,
                     Role = (
                         from ur in _context.UserRoles
                         join r in _context.Roles on ur.RoleId equals r.Id
@@ -112,19 +112,7 @@ namespace RAQEEB.Controllers
                 );
             }
 
-            var roles = await _userManager.GetRolesAsync(user);
-
-            var result = new UserResponseDto
-            {
-                Id = user.Id,
-                UserName = user.UserName ?? string.Empty,
-                FullName = user.FullName ?? user.UserName ?? string.Empty,
-                Email = user.Email ?? string.Empty,
-                PhoneNumber = user.PhoneNumber ?? string.Empty,
-                Role = roles.FirstOrDefault() ?? string.Empty,
-                HospitalId = user.HospitalId,
-                IsActive = user.IsActive
-            };
+            var result = await ToResponseAsync(user);
 
             return Ok(
                 ApiResponse<UserResponseDto>.SuccessResponse(
@@ -132,6 +120,102 @@ namespace RAQEEB.Controllers
                     "User retrieved successfully."
                 )
             );
+        }
+
+        // Edit account details (full name, email, phone number) of a user in the
+        // Admin's hospital. UserName, role and password are not changed here.
+        // PUT: api/Users/{id}
+        [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdateUser(
+            string id,
+            [FromBody] UpdateUserDto dto)
+        {
+            var hospitalId = _currentUser.HospitalId;
+
+            if (hospitalId == null)
+                return Forbid();
+
+            var user = await _userManager.FindByIdAsync(id);
+
+            if (user == null || user.HospitalId != hospitalId.Value)
+            {
+                return NotFound(
+                    ApiResponse<UserResponseDto>.FailureResponse(
+                        "USER_NOT_FOUND",
+                        "User not found in your hospital."
+                    )
+                );
+            }
+
+            var email = dto.Email.Trim();
+
+            // The email must not belong to another account (any hospital).
+            var emailOwner = await _userManager.FindByEmailAsync(email);
+
+            if (emailOwner != null && emailOwner.Id != user.Id)
+            {
+                return Conflict(
+                    ApiResponse<UserResponseDto>.FailureResponse(
+                        "EMAIL_TAKEN",
+                        "This email is already registered.",
+                        new List<ApiError>
+                        {
+                            new() { Field = "Email", Message = "This email is already registered." }
+                        }
+                    )
+                );
+            }
+
+            user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? null : dto.FullName.Trim();
+            user.Email = email;
+            user.PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+
+            // UpdateAsync validates the user and also refreshes NormalizedEmail,
+            // which Identity uses for email lookups.
+            var result = await _userManager.UpdateAsync(user);
+
+            if (!result.Succeeded)
+            {
+                return BadRequest(
+                    ApiResponse<UserResponseDto>.FailureResponse(
+                        "VALIDATION_ERROR",
+                        "One or more validation errors occurred.",
+                        result.Errors
+                            .Select(e => new ApiError
+                            {
+                                Field = e.Code.Contains("Email") ? "Email" : string.Empty,
+                                Message = e.Description
+                            })
+                            .ToList()
+                    )
+                );
+            }
+
+            return Ok(
+                ApiResponse<UserResponseDto>.SuccessResponse(
+                    await ToResponseAsync(user),
+                    "User updated successfully."
+                )
+            );
+        }
+
+        // Builds the user response (same shape as GET /api/Users).
+        private async Task<UserResponseDto> ToResponseAsync(ApplicationUser user)
+        {
+            var roles = await _userManager.GetRolesAsync(user);
+
+            return new UserResponseDto
+            {
+                Id = user.Id,
+                UserName = user.UserName ?? string.Empty,
+                FullName = string.IsNullOrWhiteSpace(user.FullName) ? null : user.FullName,
+                Email = string.IsNullOrWhiteSpace(user.Email) ? null : user.Email,
+                PhoneNumber = string.IsNullOrWhiteSpace(user.PhoneNumber) ? null : user.PhoneNumber,
+                Role = roles.FirstOrDefault() ?? string.Empty,
+                HospitalId = user.HospitalId,
+                IsActive = user.IsActive
+            };
         }
 
         // Deactivate a login account (soft delete). The user is blocked at once,

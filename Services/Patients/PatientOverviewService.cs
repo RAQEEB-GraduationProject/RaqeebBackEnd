@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RAQEEB.Data;
 using RAQEEB.DTOs.PatientDetails;
+using RAQEEB.DTOs.Patients;
 
 namespace RAQEEB.Services.Patients
 {
@@ -20,25 +21,11 @@ namespace RAQEEB.Services.Patients
         public async Task<PatientOverviewResponseDto?> GetOverviewAsync(
             Guid patientId)
         {
-            // 1. Find the patient (only if the current user can access it).
+            // 1. Find the patient (only if the current user can access it),
+            //    using the SAME mapping as GET /api/Patients and GET /api/Patients/{id}.
             var patient = await _patientAccess.GetAccessiblePatients()
                 .Where(p => p.Id == patientId)
-                .Select(p => new
-                {
-                    p.Id,
-                    p.HospitalId,
-                    p.MedicalRecordNumber,
-                    UserName = p.User.UserName,
-                    FullName = p.User.FullName,
-                    Phone = p.User.PhoneNumber,
-                    p.DateOfBirth,
-                    p.Gender,
-                    p.BloodGroup,
-                    p.RiskLevel,
-                    p.Diagnosis,
-                    p.Stage,
-                    p.Protocol
-                })
+                .Select(PatientResponseDto.Projection)
                 .FirstOrDefaultAsync();
 
             if (patient == null)
@@ -46,8 +33,8 @@ namespace RAQEEB.Services.Patients
                 return null;
             }
 
-            // 2. Get the active Doctors and Caregivers assigned to this patient.
-            //    The earliest assignment wins (treating doctor / primary caregiver).
+            // 2. Get the active Doctors, Nurses and Caregivers assigned to this patient.
+            //    The earliest assignment of each role wins.
             var staff = await (
                 from a in _context.PatientAssignments.AsNoTracking()
                 join u in _context.Users.AsNoTracking()
@@ -60,48 +47,60 @@ namespace RAQEEB.Services.Patients
                     && a.IsActive
                     && u.IsActive
                     && u.HospitalId == patient.HospitalId
-                    && (r.Name == "Doctor" || r.Name == "Caregiver")
+                    && (r.Name == "Doctor" || r.Name == "Nurse" || r.Name == "Caregiver")
                 orderby a.AssignedAt
                 select new
                 {
                     UserId = u.Id,
                     u.UserName,
                     u.FullName,
-                    RoleName = r.Name
+                    u.PhoneNumber,
+                    RoleName = r.Name,
+                    a.AssignedAt
                 }
             ).ToListAsync();
 
             var doctor = staff.FirstOrDefault(s => s.RoleName == "Doctor");
+            var nurse = staff.FirstOrDefault(s => s.RoleName == "Nurse");
             var caregiver = staff.FirstOrDefault(s => s.RoleName == "Caregiver");
 
             // 3. Build the response.
             return new PatientOverviewResponseDto
             {
+                // ----- NEW structure -----
+                Patient = patient,
+                CareTeam = new PatientCareTeamDto
+                {
+                    TreatingDoctor = doctor == null ? null : Member(doctor.UserId, doctor.UserName, doctor.FullName, doctor.PhoneNumber, doctor.RoleName, doctor.AssignedAt),
+                    Nurse = nurse == null ? null : Member(nurse.UserId, nurse.UserName, nurse.FullName, nurse.PhoneNumber, nurse.RoleName, nurse.AssignedAt),
+                    PrimaryCaregiver = caregiver == null ? null : Member(caregiver.UserId, caregiver.UserName, caregiver.FullName, caregiver.PhoneNumber, caregiver.RoleName, caregiver.AssignedAt)
+                },
+                // No treatment cycles in the database yet.
+                TreatmentProgress = null,
+
+                // ----- OLD structure (deprecated, unchanged values) -----
                 PatientHeader = new PatientHeaderDto
                 {
                     PatientId = patient.Id,
                     PatientCode = patient.MedicalRecordNumber,
                     FullName = GetDisplayName(patient.FullName, patient.UserName),
-                    Age = CalculateAge(patient.DateOfBirth),
+                    Age = patient.Age,
                     Gender = patient.Gender,
                     BloodGroup = patient.BloodGroup,
                     RiskLevel = patient.RiskLevel
                 },
-
                 PersonalInfo = new PatientPersonalInfoDto
                 {
-                    Phone = patient.Phone,
+                    Phone = patient.PhoneNumber,
                     PrimaryCaregiver = caregiver == null
                         ? null
                         : GetDisplayName(caregiver.FullName, caregiver.UserName)
                 },
-
                 ClinicalOverview = new PatientClinicalOverviewDto
                 {
                     CancerType = patient.Diagnosis,
                     Stage = patient.Stage,
                     Protocol = patient.Protocol,
-
                     TreatingDoctor = doctor == null
                         ? null
                         : new TreatingDoctorDto
@@ -109,10 +108,28 @@ namespace RAQEEB.Services.Patients
                             DoctorId = doctor.UserId,
                             Name = GetDisplayName(doctor.FullName, doctor.UserName)
                         }
-
                     // TreatmentStatus, CurrentCycle, TotalCycles and CurrentDay
                     // stay null until the Chemotherapy module (Module 2).
                 }
+            };
+        }
+
+        private static CareTeamMemberDto Member(
+            string userId,
+            string? userName,
+            string? fullName,
+            string? phoneNumber,
+            string? role,
+            DateTime assignedAt)
+        {
+            return new CareTeamMemberDto
+            {
+                UserId = userId,
+                UserName = userName ?? string.Empty,
+                FullName = string.IsNullOrWhiteSpace(fullName) ? null : fullName,
+                PhoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber,
+                Role = role ?? string.Empty,
+                AssignedAt = assignedAt
             };
         }
 
@@ -122,27 +139,6 @@ namespace RAQEEB.Services.Patients
             return !string.IsNullOrWhiteSpace(fullName)
                 ? fullName
                 : userName ?? string.Empty;
-        }
-
-        private static int? CalculateAge(DateTime? dateOfBirth)
-        {
-            if (dateOfBirth == null)
-            {
-                return null;
-            }
-
-            var today = DateTime.UtcNow.Date;
-            var birth = dateOfBirth.Value.Date;
-
-            var age = today.Year - birth.Year;
-
-            // Birthday has not happened yet this year.
-            if (birth > today.AddYears(-age))
-            {
-                age--;
-            }
-
-            return age < 0 ? null : age;
         }
     }
 }

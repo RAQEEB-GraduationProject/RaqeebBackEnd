@@ -18,22 +18,73 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 //builder.Services.AddControllers();
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        // Lists EVERY missing [JsonRequired] field (the .NET message cuts the list short).
+        // Added as an instance so its Order (-3000) is used: it must run BEFORE the
+        // automatic 400 response of [ApiController] (Order -2000). Add<T>() would run it at 0.
+        options.Filters.Add(new JsonRequiredFieldsFilter());
+    })
     .ConfigureApiBehaviorOptions(options =>
     {
         options.InvalidModelStateResponseFactory = context =>
         {
-            var errors = context.ModelState
-                .Where(x => x.Value?.Errors.Count > 0)
-                .SelectMany(x => x.Value!.Errors.Select(error =>
-                    new ApiError
+            var errors = new List<ApiError>();
+
+            foreach (var (key, entry) in context.ModelState)
+            {
+                foreach (var error in entry.Errors)
+                {
+                    var message = string.IsNullOrEmpty(error.ErrorMessage)
+                        ? error.Exception?.Message ?? string.Empty
+                        : error.ErrorMessage;
+
+                    // [JsonRequired] property missing from the body, e.g. PUT /api/Patients/{id}.
+                    // The raw .NET message names the C# type, so return one clear error per field.
+                    var missing = MissingJsonProperties.Match(message);
+                    if (missing.Success)
                     {
-                        Field = x.Key,
-                        Message = string.IsNullOrEmpty(error.ErrorMessage)
-                            ? "Invalid value."
-                            : error.ErrorMessage
-                    }))
-                .ToList();
+                        foreach (System.Text.RegularExpressions.Match name in QuotedName.Matches(missing.Groups[1].Value))
+                        {
+                            errors.Add(new ApiError
+                            {
+                                Field = name.Groups[1].Value,
+                                Message = "This field is required (send null to clear it)."
+                            });
+                        }
+                        continue;
+                    }
+
+                    // Wrong JSON type / format, e.g. "dateOfBirth": "abc" -> key "$.dateOfBirth".
+                    if (key.StartsWith("$"))
+                    {
+                        errors.Add(new ApiError
+                        {
+                            Field = key.Length > 2 ? key[2..] : string.Empty,
+                            Message = key.Length > 2
+                                ? "Invalid value or format."
+                                : "The request body is not valid JSON."
+                        });
+                        continue;
+                    }
+
+                    errors.Add(new ApiError
+                    {
+                        Field = key,
+                        Message = string.IsNullOrEmpty(message) ? "Invalid value." : message
+                    });
+                }
+            }
+
+            // When the body could not be read, MVC also adds "The dto field is required."
+            // for the whole parameter. That extra error only adds noise.
+            var bodyErrors = context.ModelState.Keys.Any(k => k.StartsWith("$"));
+            if (bodyErrors)
+            {
+                errors.RemoveAll(e =>
+                    !e.Field.Contains('.') &&
+                    e.Message == $"The {e.Field} field is required.");
+            }
 
             var response = ApiResponse<object>.FailureResponse(
                 "VALIDATION_ERROR",
@@ -258,6 +309,30 @@ app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Let JSON request bodies be read twice (needed by JsonRequiredFieldsFilter
+// to list every missing field). Bodies are small, so the cost is negligible.
+app.Use(async (context, next) =>
+{
+    if (context.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        context.Request.EnableBuffering();
+    }
+
+    await next();
+});
+
 app.MapControllers();
 
 app.Run();
+
+// Regexes used by InvalidModelStateResponseFactory above.
+public partial class Program
+{
+    // "...was missing required properties including: 'gender', 'stage'."
+    internal static readonly System.Text.RegularExpressions.Regex MissingJsonProperties =
+        new(@"missing required properties,? including(?: the following)?: (.+)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    internal static readonly System.Text.RegularExpressions.Regex QuotedName =
+        new(@"'([^']+)'");
+}
